@@ -1,0 +1,22 @@
+{
+  "name": "auditmind",
+  "version": "1.0.0",
+  "description": "Enterprise-Grade Contract Risk & Compliance Analyzer",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:web\" \"npm run dev:api\"",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "dev:api": "npm run dev --workspace=apps/api",
+    "dev:ml": "cd apps/ml-service && .venv\\Scripts\\python.exe -m uvicorn main:app --reload --port 8000",
+    "build:web": "npm run build --workspace=apps/web",
+    "build:api": "npm run build --workspace=apps/api",
+    "install:all": "npm install && cd apps/ml-service && \"C:\\Users\\HP\\AppData\\Local\\Python\\bin\\python.exe\" -m venv .venv && .venv\\Scripts\\pip.exe install -r requirements.txt"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.3"
+  }
+}

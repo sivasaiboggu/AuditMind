@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+/dist
+/build
+dist/
+build/
+
+# Local configuration and keys
+.env
+.env.local
+.env.production
+.env.development
+apps/api/.env
+apps/web/.env
+apps/ml-service/.env
+
+# Python Virtual Environments & Caches
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# System / IDE
+.idx/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
