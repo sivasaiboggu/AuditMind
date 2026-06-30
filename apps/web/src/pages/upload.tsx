@@ -47,7 +47,23 @@ export default function UploadPage() {
       percent: 5
     });
 
+    let uploadTimer: any = null;
+    let uploadPercent = 5;
+
     try {
+      // Smoothly animate the loading percentage during the network payload upload
+      uploadTimer = setInterval(() => {
+        if (uploadPercent < 45) {
+          uploadPercent += 3;
+          setProgress({
+            contractId: '',
+            stage: 'pending' as any,
+            message: 'Uploading contract to database...',
+            percent: uploadPercent
+          });
+        }
+      }, 300);
+
       // 1. Send file via multipart Form Data to Fastify API
       const formData = new FormData();
       formData.append('file', file);
@@ -56,6 +72,8 @@ export default function UploadPage() {
         method: 'POST',
         body: formData
       });
+
+      if (uploadTimer) clearInterval(uploadTimer);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -107,6 +125,7 @@ export default function UploadPage() {
       };
 
     } catch (err: any) {
+      if (uploadTimer) clearInterval(uploadTimer);
       console.error(err);
       setIsAnalyzing(false);
       setProgress(null);
