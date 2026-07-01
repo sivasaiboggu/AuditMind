@@ -14,7 +14,8 @@
     "dev:ml": "cd apps/ml-service && .venv\\Scripts\\python.exe -m uvicorn main:app --reload --port 8000",
     "build:web": "npm run build --workspace=apps/web",
     "build:api": "npm run build --workspace=apps/api",
-    "install:all": "npm install && cd apps/ml-service && \"C:\\Users\\HP\\AppData\\Local\\Python\\bin\\python.exe\" -m venv .venv && .venv\\Scripts\\pip.exe install -r requirements.txt"
+    "install:all": "npm install && cd apps/ml-service && \"C:\\Users\\HP\\AppData\\Local\\Python\\bin\\python.exe\" -m venv .venv && .venv\\Scripts\\pip.exe install -r requirements.txt",
+    "start:api": "npm run start --workspace=apps/api"
   },
   "devDependencies": {
     "concurrently": "^10.0.3"
