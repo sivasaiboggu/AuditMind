@@ -1,0 +1,13 @@
+{
+  "railway": {
+    "build": {
+      "builder": "nixpacks",
+      "buildCommand": "npm install && npm run build:api"
+    },
+    "deploy": {
+      "startCommand": "npm run start --workspace=apps/api",
+      "healthcheckPath": "/health",
+      "healthcheckTimeout": 30
+    }
+  }
+}
