@@ -4,11 +4,10 @@ import { useAuth } from '../lib/auth-context';
 import { Shield, Mail, Terminal, ArrowRight, CheckCircle2 } from 'lucide-react';
 
 export default function Login() {
-  const { loginWithGoogle, sendOTP, verifyOTP, loginBypass } = useAuth();
+  const { loginWithGoogle, sendOTP, loginBypass } = useAuth();
   const navigate = useNavigate();
   
   const [email, setEmail] = useState('');
-  const [otpCode, setOtpCode] = useState('');
   const [otpStep, setOtpStep] = useState<'request' | 'verify'>('request');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -115,7 +114,7 @@ export default function Login() {
     };
   }, []);
 
-  const handleSendCode = async (e: React.FormEvent) => {
+  const handleSendLink = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) return;
     setLoading(true);
@@ -124,22 +123,7 @@ export default function Login() {
       await sendOTP(email);
       setOtpStep('verify');
     } catch (err: any) {
-      setError(err.message || 'Failed to send verification code. Please check your Supabase SMTP/Email configuration.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleVerifyCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email || !otpCode) return;
-    setLoading(true);
-    setError(null);
-    try {
-      await verifyOTP(email, otpCode);
-      navigate('/dashboard');
-    } catch (err: any) {
-      setError(err.message || 'Invalid or expired verification code.');
+      setError(err.message || 'Failed to send verification link. Please check your SMTP settings.');
     } finally {
       setLoading(false);
     }
@@ -186,7 +170,7 @@ export default function Login() {
         )}
 
         {otpStep === 'request' ? (
-          <form onSubmit={handleSendCode} className="space-y-4">
+          <form onSubmit={handleSendLink} className="space-y-4">
             <div>
               <label className="block text-xs font-mono text-text-secondary uppercase tracking-wider mb-2">
                 Email Address
@@ -211,50 +195,26 @@ export default function Login() {
               disabled={loading}
               className="w-full bg-accent-cyan/10 hover:bg-accent-cyan/20 border border-accent-cyan/30 hover:border-accent-cyan text-accent-cyan font-mono text-sm py-2.5 rounded flex items-center justify-center gap-2 precise-transition shadow-[0_0_15px_rgba(0,229,255,0.05)] cursor-pointer disabled:opacity-50"
             >
-              {loading ? 'Sending code...' : 'Send Verification OTP'}
+              {loading ? 'Sending link...' : 'Send Magic Sign-In Link'}
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
         ) : (
-          <form onSubmit={handleVerifyCode} className="space-y-4">
-            <div className="bg-risk-low/10 border border-risk-low/20 text-risk-low text-xs p-3 rounded font-mono flex gap-2 mb-2">
-              <CheckCircle2 className="w-4 h-4 shrink-0" />
-              <span>OTP code sent to {email}. Check your email.</span>
+          <div className="space-y-4 text-center">
+            <div className="bg-risk-low/10 border border-risk-low/20 text-risk-low text-xs p-4 rounded font-mono flex flex-col items-center gap-3">
+              <CheckCircle2 className="w-8 h-8 text-risk-low animate-bounce" />
+              <span className="font-bold text-text-primary text-sm">Sign-In Link Sent!</span>
+              <span>We sent a secure magic login link to <strong>{email}</strong>. Check your inbox and click the link to log in.</span>
             </div>
 
-            <div>
-              <label className="block text-xs font-mono text-text-secondary uppercase tracking-wider mb-2">
-                6-Digit OTP Code
-              </label>
-              <input
-                type="text"
-                required
-                maxLength={6}
-                value={otpCode}
-                onChange={(e) => setOtpCode(e.target.value)}
-                placeholder="123456"
-                className="w-full tracking-widest text-center bg-background-base/80 border border-white/10 focus:border-accent-cyan/50 focus:ring-1 focus:ring-accent-cyan/20 outline-none rounded py-2.5 px-4 text-lg font-mono text-text-primary precise-transition"
-              />
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setOtpStep('request')}
-                className="w-1/3 bg-white/5 hover:bg-white/10 border border-white/10 text-text-secondary font-mono text-xs py-2.5 rounded precise-transition cursor-pointer"
-              >
-                Back
-              </button>
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-2/3 bg-accent-cyan/10 hover:bg-accent-cyan/20 border border-accent-cyan/30 hover:border-accent-cyan text-accent-cyan font-mono text-sm py-2.5 rounded flex items-center justify-center gap-2 precise-transition cursor-pointer disabled:opacity-50"
-              >
-                {loading ? 'Verifying...' : 'Verify & Sign In'}
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          </form>
+            <button
+              type="button"
+              onClick={() => setOtpStep('request')}
+              className="w-full bg-white/5 hover:bg-white/10 border border-white/10 text-text-secondary font-mono text-xs py-2.5 rounded precise-transition cursor-pointer"
+            >
+              Back to Sign In
+            </button>
+          </div>
         )}
 
         <div className="relative flex py-4 items-center">
