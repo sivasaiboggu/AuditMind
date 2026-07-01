@@ -179,7 +179,16 @@ export default function ContractView() {
         setIsChatGenerating(false);
       } else if (payload.type === 'error') {
         setIsChatGenerating(false);
-        alert(`Agent error: ${payload.message}`);
+        setChatMessages([
+          ...chatMessages,
+          {
+            id: `msg-error-${Math.random().toString(36).substring(2, 9)}`,
+            sessionId: 'session-001',
+            sender: 'assistant',
+            message: `[Gemini API Error: ${payload.message}]`,
+            createdAt: new Date().toISOString()
+          }
+        ]);
       }
     };
   };
@@ -357,21 +366,26 @@ export default function ContractView() {
                     Ask specific questions about constraints, loopholes, liabilities, or deadlines within the current agreement.
                   </div>
                   
-                  {chatMessages.map((msg) => (
-                    <div
-                      key={msg.id}
-                      className={`p-3 rounded text-xs font-sans leading-relaxed border ${
-                        msg.sender === 'user'
-                          ? 'bg-accent-cyan/5 border-accent-cyan/10 ml-6 text-text-primary'
-                          : 'bg-white/2 border-white/5 mr-6 text-text-secondary'
-                      }`}
-                    >
-                      <span className="font-mono text-[9px] text-text-muted block mb-1">
-                        {msg.sender === 'user' ? 'You' : 'AuditMind'}
-                      </span>
-                      <div className="whitespace-pre-line select-text font-sans">{msg.message}</div>
-                    </div>
-                  ))}
+                  {chatMessages.map((msg) => {
+                    const isError = msg.message.includes('[Gemini API Error:');
+                    return (
+                      <div
+                        key={msg.id}
+                        className={`p-3 rounded text-xs font-sans leading-relaxed border ${
+                          msg.sender === 'user'
+                            ? 'bg-accent-cyan/5 border-accent-cyan/10 ml-6 text-text-primary'
+                            : isError
+                            ? 'bg-risk-critical/5 border-risk-critical/20 mr-6 text-risk-critical font-mono shadow-[0_0_15px_rgba(255,77,77,0.02)]'
+                            : 'bg-white/2 border-white/5 mr-6 text-text-secondary'
+                        }`}
+                      >
+                        <span className={`font-mono text-[9px] block mb-1 ${isError ? 'text-risk-critical font-bold' : 'text-text-muted'}`}>
+                          {msg.sender === 'user' ? 'You' : isError ? 'System Notice // API Limitation' : 'AuditMind'}
+                        </span>
+                        <div className="whitespace-pre-line select-text font-sans">{msg.message}</div>
+                      </div>
+                    );
+                  })}
                   <div ref={chatEndRef} />
                 </div>
 

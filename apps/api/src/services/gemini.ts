@@ -162,7 +162,34 @@ export async function streamChatWithGemini(
     });
   } catch (error) {
     console.error('Gemini stream failed:', error);
-    onToken(`[Gemini API Error: ${(error as Error).message}. Please ensure a valid, active GEMINI_API_KEY is configured in apps/api/.env]`);
+    
+    // Determine the latest user query from the messages array
+    const userQuery = messages[messages.length - 1]?.content || '';
+    const lowercaseQuery = userQuery.toLowerCase();
+    
+    // Find matching sections in the contract context using keyword intersection
+    const matchingLines: string[] = [];
+    const lines = contractContext.split(/\n+/);
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.length < 20) continue;
+      
+      const keywords = lowercaseQuery.split(/\s+/).filter(w => w.length > 3);
+      const isMatch = keywords.some(word => trimmed.toLowerCase().includes(word));
+      if (isMatch) {
+        matchingLines.push(trimmed);
+        if (matchingLines.length >= 3) break;
+      }
+    }
+    
+    let localRecoveryText = '';
+    if (matchingLines.length > 0) {
+      localRecoveryText = `\n\n[Local RAG Recovery Search Results]:\nBased on a local scan of the contract text, I found these matching provisions:\n${matchingLines.map(line => `• "${line}"`).join('\n')}`;
+    } else {
+      localRecoveryText = `\n\n[Local RAG Recovery Search Results]:\nScanned the contract text, but no specific matches for your keywords were found in the document body.`;
+    }
+
+    onToken(`[Gemini API Error: ${(error as Error).message}. Please ensure a valid, active GEMINI_API_KEY is configured in apps/api/.env]${localRecoveryText}`);
   }
 }
 

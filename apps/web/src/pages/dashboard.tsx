@@ -161,11 +161,11 @@ export default function Dashboard() {
         setContracts(contracts.filter(c => c.id !== id));
       } else {
         const errData = await response.json().catch(() => ({}));
-        alert(errData.error || 'Failed to delete contract.');
+        setNotification(`Error: ${errData.error || 'Failed to delete contract.'}`);
       }
     } catch (err) {
       console.error(err);
-      alert('Network error while deleting contract.');
+      setNotification('Error: Network connection failure during contract deletion.');
     }
   };
 
