@@ -3,19 +3,12 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useContractStore } from '../store/contractStore';
 import { useAuth } from '../lib/auth-context';
 import { Navbar } from '../components/Navbar';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabase';
 import { Upload, AlertTriangle, Clock, FileCheck, CheckCircle2, ChevronRight, BarChart3, TrendingUp, Trash2 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
 import type { Contract } from '@auditmind/shared-types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-
-// Initialize Supabase client for realtime subscription
-const supabase = SUPABASE_URL && SUPABASE_ANON_KEY
-  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
-  : null;
 
 export default function Dashboard() {
   const navigate = useNavigate();
