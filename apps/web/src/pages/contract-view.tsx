@@ -25,6 +25,7 @@ export default function ContractView() {
   } = useContractStore();
 
   const [selectedClause, setSelectedClause] = useState<Clause | null>(null);
+  const [activeTab, setActiveTab] = useState<'analysis' | 'chat'>('analysis');
   const [chatInput, setChatInput] = useState('');
   const [isChatGenerating, setIsChatGenerating] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
@@ -299,190 +300,251 @@ export default function ContractView() {
           </div>
         </div>
 
-        {/* Right Side */}
+        {/* Right Side — Tab Layout */}
         <div className="w-1/2 flex flex-col bg-background-panel/50 overflow-hidden">
           {selectedClause ? (
             <div className="flex-grow flex flex-col overflow-hidden">
-              <div className="flex-grow overflow-y-auto p-6 space-y-6">
-                <div className="flex justify-between items-start border-b border-white/5 pb-4">
-                  <div>
-                    <span className="font-mono text-xs text-accent-cyan uppercase tracking-widest block mb-1">
-                      Clause Analysis
+
+              {/* Tab Bar */}
+              <div className="border-b border-white/5 flex items-center bg-background-panel/80 px-4 gap-1 pt-2 flex-shrink-0">
+                <button
+                  onClick={() => setActiveTab('analysis')}
+                  className={`px-4 py-2 text-xs font-mono font-bold uppercase tracking-wider rounded-t border-b-2 precise-transition flex items-center gap-1.5 ${
+                    activeTab === 'analysis'
+                      ? 'text-text-primary border-accent-cyan bg-accent-cyan/5'
+                      : 'text-text-muted border-transparent hover:text-text-secondary hover:border-white/20'
+                  }`}
+                >
+                  <FileText className="w-3 h-3" />
+                  Analysis
+                </button>
+                <button
+                  onClick={() => setActiveTab('chat')}
+                  className={`px-4 py-2 text-xs font-mono font-bold uppercase tracking-wider rounded-t border-b-2 precise-transition flex items-center gap-1.5 ${
+                    activeTab === 'chat'
+                      ? 'text-text-primary border-accent-cyan bg-accent-cyan/5'
+                      : 'text-text-muted border-transparent hover:text-text-secondary hover:border-white/20'
+                  }`}
+                >
+                  <MessageSquareCode className="w-3 h-3" />
+                  AI Chat
+                  {chatMessages.length > 0 && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-accent-cyan/15 border border-accent-cyan/30 text-accent-cyan font-bold">
+                      {chatMessages.length}
                     </span>
-                    <h3 className="text-lg font-mono font-bold text-text-primary">
-                      {selectedClause.number ? `${selectedClause.number}: ` : ''}{selectedClause.title}
-                    </h3>
-                  </div>
-                  <div className={`px-3 py-1.5 rounded font-mono text-xs uppercase font-bold border ${getRiskBgClass(selectedClause.riskLevel)}`}>
-                    {selectedClause.riskLevel} Risk Tier
-                  </div>
-                </div>
+                  )}
+                </button>
 
-                <div className="space-y-2">
-                  <span className="text-[10px] font-mono text-text-secondary uppercase tracking-widest block">
-                    Original Clause
+                {/* Right-side status badge in tab bar */}
+                <div className="ml-auto flex items-center gap-2 mb-1">
+                  <span className={`text-[9px] font-mono uppercase px-2 py-0.5 rounded border flex items-center gap-1 ${
+                    wsConnected
+                      ? 'text-risk-low bg-risk-low/5 border-risk-low/20'
+                      : 'text-risk-medium bg-risk-medium/5 border-risk-medium/20'
+                  }`}>
+                    {wsConnected ? <Wifi className="w-2.5 h-2.5" /> : <WifiOff className="w-2.5 h-2.5" />}
+                    {wsConnected ? 'Live' : 'Offline'}
                   </span>
-                  <div className="p-4 bg-background-base border border-white/5 rounded font-sans text-sm text-text-secondary leading-relaxed select-text">
-                    {selectedClause.text}
-                  </div>
                 </div>
+              </div>
 
-                <div className="space-y-2">
+              {/* Analysis Tab */}
+              {activeTab === 'analysis' && (
+                <div className="flex-grow overflow-y-auto p-6 space-y-5">
+                  <div className="flex justify-between items-start border-b border-white/5 pb-4">
+                    <div>
+                      <span className="font-mono text-xs text-accent-cyan uppercase tracking-widest block mb-1">
+                        Clause Analysis
+                      </span>
+                      <h3 className="text-lg font-mono font-bold text-text-primary">
+                        {selectedClause.number ? `${selectedClause.number}: ` : ''}{selectedClause.title}
+                      </h3>
+                    </div>
+                    <div className={`px-3 py-1.5 rounded font-mono text-xs uppercase font-bold border ${getRiskBgClass(selectedClause.riskLevel)}`}>
+                      {selectedClause.riskLevel} Risk
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-mono text-text-secondary uppercase tracking-widest block">
+                      Original Clause
+                    </span>
+                    <div className="p-4 bg-background-base border border-white/5 rounded-lg font-sans text-sm text-text-secondary leading-relaxed select-text">
+                      {selectedClause.text}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
                     <div className="flex items-center gap-2">
                       <AlertTriangle className="w-4 h-4 text-risk-high" />
-                      <span className="text-[10px] font-mono text-text-primary uppercase tracking-widest block">
+                      <span className="text-[10px] font-mono text-text-primary uppercase tracking-widest">
                         Risk Explanation
                       </span>
                     </div>
-                  <div className="p-4 bg-risk-critical/5 border border-risk-critical/10 rounded font-sans text-sm text-text-secondary leading-relaxed">
-                    {selectedClause.riskExplanation}
-                  </div>
-                </div>
-
-                {selectedClause.suggestedRedline && (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <FileEdit className="w-4 h-4 text-risk-low" />
-                      <span className="text-[10px] font-mono text-text-primary uppercase tracking-widest block">
-                        Suggested Revision
-                      </span>
+                    <div className="p-4 bg-risk-critical/5 border border-risk-critical/10 rounded-lg font-sans text-sm text-text-secondary leading-relaxed">
+                      {selectedClause.riskExplanation}
                     </div>
-                    <div className="p-4 bg-risk-low/5 border border-risk-low/10 rounded font-sans text-sm text-text-secondary leading-relaxed overflow-hidden">
-                      <div className="text-xs font-mono text-text-muted mb-2">PROPOSED AMENDMENT:</div>
-                      <div className="text-risk-low border-l-2 border-risk-low/30 pl-3 italic">
-                        {selectedClause.suggestedRedline}
+                  </div>
+
+                  {selectedClause.suggestedRedline && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <FileEdit className="w-4 h-4 text-risk-low" />
+                        <span className="text-[10px] font-mono text-text-primary uppercase tracking-widest">
+                          Suggested Revision
+                        </span>
                       </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* WebSocket RAG Chat Drawer */}
-              <div className="h-[270px] border-t border-white/5 bg-background-panel flex flex-col overflow-hidden">
-                <div className="border-b border-white/5 px-4 py-2 flex items-center justify-between bg-white/1">
-                  <div className="flex items-center gap-2 text-text-primary">
-                    <MessageSquareCode className="w-4 h-4 text-accent-cyan" />
-                    <span className="text-xs font-mono font-bold uppercase tracking-wider">
-                      Document Q&A
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {isChatGenerating && (
-                      <span className="text-[9px] font-mono text-risk-medium uppercase bg-risk-medium/5 border border-risk-medium/20 px-1.5 py-0.5 rounded flex items-center gap-1">
-                        <span className="inline-block w-1 h-1 rounded-full bg-risk-medium animate-bounce" style={{animationDelay:'0ms'}} />
-                        <span className="inline-block w-1 h-1 rounded-full bg-risk-medium animate-bounce" style={{animationDelay:'150ms'}} />
-                        <span className="inline-block w-1 h-1 rounded-full bg-risk-medium animate-bounce" style={{animationDelay:'300ms'}} />
-                      </span>
-                    )}
-                    {wsConnected ? (
-                      <span className="text-[9px] font-mono text-risk-low uppercase bg-risk-low/5 border border-risk-low/20 px-1.5 py-0.5 rounded flex items-center gap-1">
-                        <Wifi className="w-2.5 h-2.5" /> Live
-                      </span>
-                    ) : (
-                      <span className="text-[9px] font-mono text-risk-medium uppercase bg-risk-medium/5 border border-risk-medium/20 px-1.5 py-0.5 rounded flex items-center gap-1">
-                        <WifiOff className="w-2.5 h-2.5" /> Offline
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex-grow overflow-y-auto p-3 space-y-2">
-                  {/* Welcome message */}
-                  <div className="flex items-start gap-2">
-                    <div className="w-5 h-5 rounded-full bg-accent-cyan/10 border border-accent-cyan/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <Bot className="w-3 h-3 text-accent-cyan" />
-                    </div>
-                    <div className="bg-white/2 border border-white/5 p-2.5 rounded-lg rounded-tl-none text-xs font-sans text-text-secondary leading-relaxed flex-1">
-                      Ask questions about this contract — obligations, risks, deadlines, or clause implications.
-                    </div>
-                  </div>
-                  
-                  {chatMessages.map((msg) => {
-                    const isLocalSearch = msg.message.includes('Local Search Mode') || msg.message.includes('⚠️');
-                    const isUser = msg.sender === 'user';
-                    return (
-                      <div key={msg.id} className={`flex items-start gap-2 ${isUser ? 'flex-row-reverse' : ''}`}>
-                        {!isUser && (
-                          <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 border ${
-                            isLocalSearch
-                              ? 'bg-risk-medium/10 border-risk-medium/30'
-                              : 'bg-accent-cyan/10 border-accent-cyan/20'
-                          }`}>
-                            <Bot className={`w-3 h-3 ${isLocalSearch ? 'text-risk-medium' : 'text-accent-cyan'}`} />
-                          </div>
-                        )}
-                        <div className={`relative group p-2.5 rounded-lg text-xs font-sans leading-relaxed max-w-[88%] border ${
-                          isUser
-                            ? 'bg-accent-cyan/8 border-accent-cyan/15 rounded-tr-none text-text-primary'
-                            : isLocalSearch
-                            ? 'bg-risk-medium/5 border-risk-medium/20 rounded-tl-none text-risk-medium'
-                            : 'bg-white/2 border-white/5 rounded-tl-none text-text-secondary'
-                        }`}>
-                          {!isUser && (
-                            <span className={`font-mono text-[9px] block mb-1 ${
-                              isLocalSearch ? 'text-risk-medium font-bold' : 'text-text-muted'
-                            }`}>
-                              {isLocalSearch ? '⚠ AuditMind · Local Search Mode' : 'AuditMind'}
-                            </span>
-                          )}
-                          <div className="whitespace-pre-line select-text">{msg.message}</div>
-                          {/* Copy button */}
-                          <button
-                            onClick={() => handleCopy(msg.id, msg.message)}
-                            className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 p-0.5 rounded text-text-muted hover:text-text-primary precise-transition"
-                          >
-                            {copiedId === msg.id
-                              ? <CheckCheck className="w-3 h-3 text-risk-low" />
-                              : <Copy className="w-3 h-3" />}
-                          </button>
+                      <div className="p-4 bg-risk-low/5 border border-risk-low/10 rounded-lg font-sans text-sm text-text-secondary leading-relaxed">
+                        <div className="text-xs font-mono text-text-muted mb-2">PROPOSED AMENDMENT:</div>
+                        <div className="text-risk-low border-l-2 border-risk-low/30 pl-3 italic">
+                          {selectedClause.suggestedRedline}
                         </div>
-                      </div>
-                    );
-                  })}
-
-                  {/* Animated typing indicator */}
-                  {isChatGenerating && chatMessages[chatMessages.length - 1]?.message === '' && (
-                    <div className="flex items-start gap-2">
-                      <div className="w-5 h-5 rounded-full bg-accent-cyan/10 border border-accent-cyan/20 flex items-center justify-center flex-shrink-0">
-                        <Bot className="w-3 h-3 text-accent-cyan" />
-                      </div>
-                      <div className="bg-white/2 border border-white/5 p-2.5 rounded-lg rounded-tl-none flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-accent-cyan animate-bounce" style={{animationDelay:'0ms'}} />
-                        <span className="w-1.5 h-1.5 rounded-full bg-accent-cyan animate-bounce" style={{animationDelay:'150ms'}} />
-                        <span className="w-1.5 h-1.5 rounded-full bg-accent-cyan animate-bounce" style={{animationDelay:'300ms'}} />
                       </div>
                     </div>
                   )}
-                  <div ref={chatEndRef} />
-                </div>
 
-                <form onSubmit={handleSendChat} className="border-t border-white/5 p-2.5 flex gap-2 bg-background-base/30">
-                  <input
-                    type="text"
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    placeholder={isChatGenerating ? 'AuditMind is thinking...' : "Ask e.g., 'What happens if we breach section 4.2?'"}
-                    disabled={isChatGenerating}
-                    className="flex-grow bg-background-base border border-white/10 outline-none rounded-lg py-2 px-3 text-xs font-sans text-text-primary placeholder:text-text-muted focus:border-accent-cyan/50 focus:ring-1 focus:ring-accent-cyan/20 precise-transition disabled:opacity-50"
-                  />
+                  {/* Quick Chat CTA */}
                   <button
-                    type="submit"
-                    disabled={isChatGenerating || !wsConnected}
-                    className="px-3 py-2 bg-accent-cyan/10 hover:bg-accent-cyan/20 border border-accent-cyan/30 hover:border-accent-cyan text-accent-cyan rounded-lg precise-transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+                    onClick={() => setActiveTab('chat')}
+                    className="w-full mt-2 py-3 rounded-lg border border-accent-cyan/20 bg-accent-cyan/3 hover:bg-accent-cyan/8 hover:border-accent-cyan/40 text-accent-cyan text-xs font-mono font-bold uppercase tracking-wider precise-transition flex items-center justify-center gap-2"
                   >
-                    <Send className="w-3.5 h-3.5" />
+                    <MessageSquareCode className="w-3.5 h-3.5" />
+                    Ask AI about this clause →
                   </button>
-                </form>
-              </div>
+                </div>
+              )}
+
+              {/* Chat Tab — full height */}
+              {activeTab === 'chat' && (
+                <div className="flex-grow flex flex-col overflow-hidden">
+                  {/* Chat context pill */}
+                  <div className="px-4 py-2 flex-shrink-0 border-b border-white/5 bg-background-base/20">
+                    <div className="flex items-center gap-2 text-[10px] font-mono text-text-muted">
+                      <span className="text-accent-cyan">▸</span>
+                      Context:
+                      <span className="text-text-secondary font-bold truncate">
+                        {selectedClause.number ? `${selectedClause.number} · ` : ''}{selectedClause.title}
+                      </span>
+                      {isChatGenerating && (
+                        <span className="ml-auto flex items-center gap-1 text-risk-medium">
+                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-risk-medium animate-bounce" style={{animationDelay:'0ms'}} />
+                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-risk-medium animate-bounce" style={{animationDelay:'150ms'}} />
+                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-risk-medium animate-bounce" style={{animationDelay:'300ms'}} />
+                          Thinking...
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Messages scroll area — takes all available height */}
+                  <div className="flex-grow overflow-y-auto p-4 space-y-3">
+                    {/* Welcome bubble */}
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-6 h-6 rounded-full bg-accent-cyan/10 border border-accent-cyan/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Bot className="w-3.5 h-3.5 text-accent-cyan" />
+                      </div>
+                      <div className="bg-white/3 border border-white/8 px-3.5 py-2.5 rounded-2xl rounded-tl-sm text-sm font-sans text-text-secondary leading-relaxed flex-1 max-w-[90%]">
+                        <span className="block text-[10px] font-mono text-accent-cyan mb-1 uppercase tracking-wider">AuditMind</span>
+                        Ask me anything about this contract — clause obligations, risk implications, breach scenarios, or deadline triggers.
+                      </div>
+                    </div>
+
+                    {chatMessages.map((msg) => {
+                      const isLocalSearch = msg.message.includes('Local Search Mode') || msg.message.includes('⚠️') || msg.message.includes('⚠');
+                      const isUser = msg.sender === 'user';
+                      return (
+                        <div key={msg.id} className={`flex items-end gap-2.5 ${isUser ? 'flex-row-reverse' : ''}`}>
+                          {!isUser && (
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 border ${
+                              isLocalSearch
+                                ? 'bg-risk-medium/15 border-risk-medium/30'
+                                : 'bg-accent-cyan/10 border-accent-cyan/20'
+                            }`}>
+                              <Bot className={`w-3.5 h-3.5 ${isLocalSearch ? 'text-risk-medium' : 'text-accent-cyan'}`} />
+                            </div>
+                          )}
+                          <div className={`relative group max-w-[80%] px-3.5 py-2.5 rounded-2xl text-sm font-sans leading-relaxed border ${
+                            isUser
+                              ? 'bg-accent-cyan/10 border-accent-cyan/20 rounded-br-sm text-text-primary'
+                              : isLocalSearch
+                              ? 'bg-amber-500/5 border-amber-500/20 rounded-bl-sm text-amber-200'
+                              : 'bg-white/3 border-white/8 rounded-bl-sm text-text-secondary'
+                          }`}>
+                            {!isUser && (
+                              <span className={`block text-[9px] font-mono mb-1.5 uppercase tracking-wider ${
+                                isLocalSearch ? 'text-amber-400 font-bold' : 'text-text-muted'
+                              }`}>
+                                {isLocalSearch ? '⚠ Local Search Mode' : 'AuditMind'}
+                              </span>
+                            )}
+                            <div className="whitespace-pre-line select-text">{msg.message}</div>
+                            {/* Hover copy button */}
+                            <button
+                              onClick={() => handleCopy(msg.id, msg.message)}
+                              className="absolute -top-2 right-2 opacity-0 group-hover:opacity-100 bg-background-panel border border-white/10 p-1 rounded-md text-text-muted hover:text-text-primary precise-transition shadow-lg"
+                              title="Copy"
+                            >
+                              {copiedId === msg.id
+                                ? <CheckCheck className="w-3 h-3 text-risk-low" />
+                                : <Copy className="w-3 h-3" />}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Typing indicator — only show when empty placeholder message is streaming */}
+                    {isChatGenerating && chatMessages[chatMessages.length - 1]?.message === '' && (
+                      <div className="flex items-end gap-2.5">
+                        <div className="w-6 h-6 rounded-full bg-accent-cyan/10 border border-accent-cyan/20 flex items-center justify-center flex-shrink-0">
+                          <Bot className="w-3.5 h-3.5 text-accent-cyan" />
+                        </div>
+                        <div className="bg-white/3 border border-white/8 px-4 py-3 rounded-2xl rounded-bl-sm flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-accent-cyan/60 animate-bounce" style={{animationDelay:'0ms'}} />
+                          <span className="w-2 h-2 rounded-full bg-accent-cyan/60 animate-bounce" style={{animationDelay:'160ms'}} />
+                          <span className="w-2 h-2 rounded-full bg-accent-cyan/60 animate-bounce" style={{animationDelay:'320ms'}} />
+                        </div>
+                      </div>
+                    )}
+                    <div ref={chatEndRef} />
+                  </div>
+
+                  {/* Input bar */}
+                  <div className="flex-shrink-0 border-t border-white/5 bg-background-panel/60 p-4">
+                    <form onSubmit={handleSendChat} className="flex gap-2.5 items-center">
+                      <input
+                        type="text"
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        placeholder={isChatGenerating ? 'AuditMind is thinking...' : "Ask a question about this contract..."}
+                        disabled={isChatGenerating}
+                        className="flex-grow bg-background-base border border-white/10 outline-none rounded-xl py-3 px-4 text-sm font-sans text-text-primary placeholder:text-text-muted/50 focus:border-accent-cyan/50 focus:ring-1 focus:ring-accent-cyan/20 precise-transition disabled:opacity-50"
+                      />
+                      <button
+                        type="submit"
+                        disabled={isChatGenerating || !wsConnected}
+                        className="w-10 h-10 bg-accent-cyan/15 hover:bg-accent-cyan/25 border border-accent-cyan/30 hover:border-accent-cyan text-accent-cyan rounded-xl precise-transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center flex-shrink-0"
+                        title="Send"
+                      >
+                        <Send className="w-4 h-4" />
+                      </button>
+                    </form>
+                    <p className="text-[10px] text-text-muted/40 font-mono mt-2 text-center">
+                      {wsConnected ? 'Connected · Powered by AuditMind RAG' : 'Connecting to AI service...'}
+                    </p>
+                  </div>
+                </div>
+              )}
+
             </div>
           ) : (
-            <div className="flex-grow flex flex-col items-center justify-center text-text-muted p-8 text-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-white/3 border border-white/8 flex items-center justify-center">
-                <FileText className="w-5 h-5 text-text-muted" />
+            <div className="flex-grow flex flex-col items-center justify-center text-text-muted p-8 text-center gap-4">
+              <div className="w-16 h-16 rounded-full bg-white/3 border border-white/8 flex items-center justify-center">
+                <FileText className="w-7 h-7 text-text-muted/50" />
               </div>
               <div>
-                <p className="font-mono text-xs uppercase tracking-widest mb-1">No Clause Selected</p>
-                <p className="text-xs text-text-muted/60">Click any clause on the left to view its risk analysis, suggested revisions, and ask questions.</p>
+                <p className="font-mono text-sm uppercase tracking-widest mb-2 text-text-secondary">No Clause Selected</p>
+                <p className="text-xs text-text-muted/60 max-w-xs leading-relaxed">Click any clause on the left panel to view its risk analysis, suggested revisions, and ask AI questions.</p>
               </div>
             </div>
           )}
