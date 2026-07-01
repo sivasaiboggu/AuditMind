@@ -1,6 +1,6 @@
 import React from 'react';
 import { useContractStore } from '../store/contractStore';
-import { Shield, LayoutDashboard, FileSearch, LogOut } from 'lucide-react';
+import { LayoutDashboard, FileSearch, LogOut } from 'lucide-react';
 
 interface NavbarProps {
   currentView: 'dashboard' | 'analyzer';
@@ -14,9 +14,14 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setView, onLogout }
   return (
     <header className="glass-panel border-b border-white/5 px-6 py-4 flex items-center justify-between sticky top-0 z-50">
       <div className="flex items-center gap-3">
-        <div className="relative flex items-center justify-center w-10 h-10 rounded bg-background-base border border-accent-cyan/30 text-accent-cyan shadow-[0_0_15px_rgba(0,229,255,0.15)]">
-          <Shield className="w-5 h-5 animate-pulse-subtle" />
-          <div className="absolute -inset-0.5 rounded bg-accent-cyan opacity-10 blur-sm"></div>
+        <div className="relative flex items-center justify-center w-10 h-10 rounded bg-background-base border border-accent-cyan/25 text-accent-cyan shadow-[0_0_15px_rgba(0,229,255,0.12)]">
+          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 22C12 22 20 18 20 12V5L12 2L4 5V12C4 18 12 22 12 22Z" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M9 11H15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <path d="M12 8V15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <path d="M10.5 15H13.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+          <div className="absolute -inset-0.5 rounded bg-accent-cyan opacity-5 blur-sm"></div>
         </div>
         <div>
           <span className="font-mono text-lg font-bold tracking-wider text-text-primary">

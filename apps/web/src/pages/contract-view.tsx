@@ -15,6 +15,7 @@ export default function ContractView() {
   const { logout } = useAuth();
   const {
     contracts,
+    setContracts,
     activeContract,
     setActiveContract,
     activeClauses,
@@ -52,9 +53,30 @@ export default function ContractView() {
       setActiveContract(currentContract);
       fetchClauses(id);
     } else {
-      navigate('/dashboard');
+      // If the contract is not found in the local store (e.g., direct navigation or page refresh),
+      // fetch the contracts from the API to see if it exists.
+      const loadContract = async () => {
+        try {
+          const response = await fetch(`${API_URL}/contracts`);
+          if (response.ok) {
+            const data = await response.json();
+            setContracts(data);
+            const found = data.find((c: any) => c.id === id);
+            if (found) {
+              setActiveContract(found);
+              await fetchClauses(id);
+              return;
+            }
+          }
+          navigate('/dashboard');
+        } catch (err) {
+          console.error('Failed to fetch contract details:', err);
+          navigate('/dashboard');
+        }
+      };
+      loadContract();
     }
-  }, [id, contracts, navigate, setActiveContract, setActiveClauses]);
+  }, [id, contracts, navigate, setActiveContract, setActiveClauses, setContracts]);
 
   // 2. Configure WebSocket connection for real-time document chat
   useEffect(() => {
@@ -181,7 +203,7 @@ export default function ContractView() {
   };
 
   return (
-    <div className="min-h-screen bg-background-base flex flex-col overflow-hidden">
+    <div className="h-screen bg-background-base flex flex-col overflow-hidden">
       <Navbar currentView="analyzer" setView={(v) => navigate(v === 'dashboard' ? '/dashboard' : '/upload')} onLogout={handleLogout} />
       
       {/* Sub Header */}
@@ -197,9 +219,6 @@ export default function ContractView() {
             <h2 className="text-sm font-mono font-bold text-text-primary uppercase tracking-wide">
               {activeContract?.name || 'ANALYZER MODE'}
             </h2>
-            <p className="text-[10px] font-mono text-text-muted uppercase">
-              Hash ID: {activeContract?.id || 'NO_UUID'}
-            </p>
           </div>
         </div>
 
@@ -217,20 +236,20 @@ export default function ContractView() {
       </div>
 
       {/* Side by Side */}
-      <div className="flex-grow flex h-[calc(100vh-125px)] overflow-hidden">
+      <div className="flex-grow flex overflow-hidden">
         {/* Left Side */}
         <div className="w-1/2 border-r border-white/5 flex flex-col bg-background-base overflow-hidden">
           <div className="border-b border-white/5 p-4 flex items-center gap-2 bg-white/1">
             <FileText className="w-4 h-4 text-accent-cyan" />
             <span className="text-xs font-mono font-bold text-text-secondary uppercase">
-              Extracted Clause List
+              Contract Clauses
             </span>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             {activeClauses.length === 0 ? (
               <div className="p-12 text-center text-text-muted font-mono text-xs animate-pulse">
-                PARSING AND VECTORIZING CLAUSES // STAND BY
+                Analyzing contract clauses...
               </div>
             ) : (
               activeClauses.map((clause) => (
@@ -268,7 +287,7 @@ export default function ContractView() {
                 <div className="flex justify-between items-start border-b border-white/5 pb-4">
                   <div>
                     <span className="font-mono text-xs text-accent-cyan uppercase tracking-widest block mb-1">
-                      Deep Risk Assessment
+                      Clause Analysis
                     </span>
                     <h3 className="text-lg font-mono font-bold text-text-primary">
                       {selectedClause.number ? `${selectedClause.number}: ` : ''}{selectedClause.title}
@@ -281,7 +300,7 @@ export default function ContractView() {
 
                 <div className="space-y-2">
                   <span className="text-[10px] font-mono text-text-secondary uppercase tracking-widest block">
-                    Original Clause text
+                    Original Clause
                   </span>
                   <div className="p-4 bg-background-base border border-white/5 rounded font-sans text-sm text-text-secondary leading-relaxed select-text">
                     {selectedClause.text}
@@ -289,12 +308,12 @@ export default function ContractView() {
                 </div>
 
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-risk-high" />
-                    <span className="text-[10px] font-mono text-text-primary uppercase tracking-widest block">
-                      Vulnerability Assessment
-                    </span>
-                  </div>
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-risk-high" />
+                      <span className="text-[10px] font-mono text-text-primary uppercase tracking-widest block">
+                        Risk Explanation
+                      </span>
+                    </div>
                   <div className="p-4 bg-risk-critical/5 border border-risk-critical/10 rounded font-sans text-sm text-text-secondary leading-relaxed">
                     {selectedClause.riskExplanation}
                   </div>
@@ -305,11 +324,11 @@ export default function ContractView() {
                     <div className="flex items-center gap-2">
                       <FileEdit className="w-4 h-4 text-risk-low" />
                       <span className="text-[10px] font-mono text-text-primary uppercase tracking-widest block">
-                        Suggested Redline Configuration
+                        Suggested Revision
                       </span>
                     </div>
                     <div className="p-4 bg-risk-low/5 border border-risk-low/10 rounded font-sans text-sm text-text-secondary leading-relaxed overflow-hidden">
-                      <div className="text-xs font-mono text-text-muted mb-2">// AMENDMENT PROPOSAL:</div>
+                      <div className="text-xs font-mono text-text-muted mb-2">PROPOSED AMENDMENT:</div>
                       <div className="text-risk-low border-l-2 border-risk-low/30 pl-3 italic">
                         {selectedClause.suggestedRedline}
                       </div>
@@ -324,17 +343,17 @@ export default function ContractView() {
                   <div className="flex items-center gap-2 text-text-primary">
                     <MessageSquareCode className="w-4 h-4 text-accent-cyan" />
                     <span className="text-xs font-mono font-bold uppercase tracking-wider">
-                      Interactive Document Agent
+                      Document Q&A
                     </span>
                   </div>
                   <span className="text-[9px] font-mono text-risk-low uppercase bg-risk-low/5 border border-risk-low/20 px-1.5 py-0.5 rounded animate-pulse">
-                    live socket connected
+                    Connected
                   </span>
                 </div>
 
                 <div className="flex-grow overflow-y-auto p-4 space-y-3">
                   <div className="bg-white/2 border border-white/5 p-3 rounded text-xs font-sans text-text-secondary leading-relaxed">
-                    <span className="font-mono text-[10px] text-accent-cyan block mb-1">SYSTEM INSTANCE // AUDITMIND AGENT</span>
+                    <span className="font-mono text-[10px] text-accent-cyan block mb-1">AuditMind Assistant</span>
                     Ask specific questions about constraints, loopholes, liabilities, or deadlines within the current agreement.
                   </div>
                   
@@ -348,7 +367,7 @@ export default function ContractView() {
                       }`}
                     >
                       <span className="font-mono text-[9px] text-text-muted block mb-1">
-                        {msg.sender === 'user' ? 'USER ANALYST' : 'AUDITMIND AGENT'}
+                        {msg.sender === 'user' ? 'You' : 'AuditMind'}
                       </span>
                       <div className="whitespace-pre-line select-text font-sans">{msg.message}</div>
                     </div>

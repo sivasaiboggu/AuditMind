@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Shield, Scale, Cpu, FileText } from 'lucide-react';
+import { ArrowRight, Cpu, FileText, Shield } from 'lucide-react';
 
 export default function Landing() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -114,8 +114,14 @@ export default function Landing() {
       <header className="border-b border-white/5 bg-background-base/20 backdrop-blur-md z-10">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="relative w-8 h-8 rounded bg-background-base border border-accent-cyan/40 text-accent-cyan flex items-center justify-center shadow-[0_0_15px_rgba(0,229,255,0.25)]">
-              <Scale className="w-4 h-4 animate-pulse" />
+            <div className="relative w-8 h-8 rounded bg-background-base border border-accent-cyan/25 text-accent-cyan flex items-center justify-center shadow-[0_0_15px_rgba(0,229,255,0.12)]">
+              <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 22C12 22 20 18 20 12V5L12 2L4 5V12C4 18 12 22 12 22Z" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M9 11H15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                <path d="M12 8V15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                <path d="M10.5 15H13.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+              <div className="absolute -inset-0.5 rounded bg-accent-cyan opacity-5 blur-sm"></div>
             </div>
             <span className="font-mono font-bold text-lg tracking-wider text-text-primary">
               AUDIT<span className="text-accent-cyan">MIND</span>
@@ -130,7 +136,7 @@ export default function Landing() {
         <div className="max-w-4xl">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-accent-cyan/20 bg-accent-cyan/5 text-accent-cyan text-xs font-mono mb-6">
             <div className="w-1.5 h-1.5 rounded-full bg-accent-cyan animate-pulse" />
-            Neural Ingestion Engines // Active
+            Next-Gen Legal AI Platform
           </div>
           
           <h1 className="display-lg text-[36px] leading-[36px] md:text-[48px] md:leading-[48px] font-normal tracking-[-0.025em] mb-6 text-text-primary uppercase-none">

@@ -257,7 +257,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-2 mb-4">
               <TrendingUp className="w-4 h-4 text-accent-cyan" />
               <h2 className="font-mono text-sm font-semibold uppercase tracking-wider text-text-primary">
-                System Risk Over Time
+                Risk Score Trend
               </h2>
             </div>
             <div className="h-[200px] w-full">
@@ -286,7 +286,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-2 mb-4">
               <BarChart3 className="w-4 h-4 text-accent-cyan" />
               <h2 className="font-mono text-sm font-semibold uppercase tracking-wider text-text-primary">
-                Clause Risk Allocation
+                Risk Level Distribution
               </h2>
             </div>
             <div className="h-[200px] w-full">
@@ -313,16 +313,16 @@ export default function Dashboard() {
         <div className="glass-panel rounded border border-white/5 overflow-hidden">
           <div className="border-b border-white/5 px-6 py-4 flex justify-between items-center bg-white/2">
             <h2 className="font-mono text-sm font-bold uppercase tracking-wider text-text-primary">
-              Secure Contract Vault
+              Contracts
             </h2>
             <span className="font-mono text-xs text-text-secondary">
-              [Count: {contracts.length} records]
+              [{contracts.length} loaded]
             </span>
           </div>
 
           {contracts.length === 0 ? (
             <div className="p-12 text-center text-text-muted font-mono text-sm">
-              NO ACTIVE SECURE CONTRACTS FOUND // INGEST A FILE TO INITIATE ANALYSIS
+              No contracts found. Upload a file to start analysis.
             </div>
           ) : (
             <div className="divide-y divide-white/5">
