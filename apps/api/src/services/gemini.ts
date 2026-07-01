@@ -161,8 +161,13 @@ export async function streamChatWithGemini(
       });
     });
   } catch (error) {
-    console.error('Gemini stream failed:', error);
-    onToken('\n[Gemini Streaming Connection Interrupted. Please check API Key and connectivity]');
+    console.error('Gemini stream failed, falling back to mock stream response:', error);
+    const mockReply = `[MOCK CHAT MODE - API CONNECTION ERROR: PROJECT BLOCKED OR API KEY INVALID]\n\nUnder this agreement, the liabilities, deadlines, and operational constraints are defined by standard terms. Let me know if you would like me to explain specific sections, or configure a valid, active GEMINI_API_KEY to retrieve live neural responses.`;
+    const tokens = mockReply.split(' ');
+    for (const token of tokens) {
+      await new Promise(r => setTimeout(r, 60));
+      onToken(token + ' ');
+    }
   }
 }
 
