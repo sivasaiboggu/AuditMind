@@ -123,12 +123,15 @@ app.get('/contracts', async (req, reply) => {
 
   const { userId } = req.query as { userId?: string };
 
-  let query = supabase.from('contracts').select('*');
-  if (userId) {
-    query = query.eq('user_id', userId);
+  if (!userId) {
+    return [];
   }
 
-  const { data, error } = await query.order('created_at', { ascending: false });
+  const { data, error } = await supabase
+    .from('contracts')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
 
   if (error) return reply.status(500).send({ error: error.message });
   return data.map(item => ({
