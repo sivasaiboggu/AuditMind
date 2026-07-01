@@ -8,12 +8,41 @@ export interface RawSegment {
 }
 
 /**
+ * Robust binary string extraction fallback for corrupted or non-standard PDF XRef tables.
+ */
+function extractStringsFromPdfBinary(buffer: Buffer): string {
+  const binaryString = buffer.toString('binary');
+  // Match parenthesized text strings (e.g. "(Hello World)")
+  const matches = binaryString.match(/\(([^)]+)\)/g);
+  if (!matches || matches.length < 10) {
+    // Fallback: return printable ASCII/UTF-8 strings
+    return buffer.toString('utf-8').replace(/[^\x20-\x7E\n\r\t]/g, ' ');
+  }
+
+  const textSegments = matches
+    .map(m => {
+      let content = m.slice(1, -1);
+      // Clean PDF backslash-escaped characters (e.g. \), \(, etc.)
+      content = content.replace(/\\(.)/g, '$1');
+      return content;
+    })
+    .filter(c => c.trim().length > 2 && !/^[0-9\/\.\s\-]+$/.test(c));
+
+  return textSegments.join(' ');
+}
+
+/**
  * Extracts text from file buffer based on MIME type.
  */
 export async function extractText(buffer: Buffer, mimeType: string): Promise<string> {
   if (mimeType === 'application/pdf') {
-    const data = await pdf(buffer);
-    return data.text;
+    try {
+      const data = await pdf(buffer);
+      return data.text;
+    } catch (err: any) {
+      console.warn('// pdf-parse failed with XRef/corrupted structure error. Running binary recovery fallback...', err.message || err);
+      return extractStringsFromPdfBinary(buffer);
+    }
   } else if (
     mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
     mimeType === 'application/msword'

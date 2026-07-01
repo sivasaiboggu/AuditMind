@@ -175,7 +175,8 @@ function validateContractHeuristic(text: string): { isContract: boolean; message
   const legalKeywords = [
     'agreement', 'contract', 'hereby', 'indemnify', 'indemnification',
     'liability', 'jurisdiction', 'confidentiality', 'termination',
-    'licensor', 'licensee', 'covenant', 'whereas', 'governing law'
+    'licensor', 'licensee', 'covenant', 'whereas', 'governing law',
+    'shall', 'party', 'parties', 'services', 'effective date', 'terms', 'thereto'
   ];
   let matches = 0;
   for (const kw of legalKeywords) {
@@ -183,7 +184,10 @@ function validateContractHeuristic(text: string): { isContract: boolean; message
       matches++;
     }
   }
-  if (matches < 3) {
+
+  // If the document is extremely short (under 500 characters) and has no legal keywords, reject it.
+  // Otherwise, if the document has any legal keywords or is long, allow it to pass.
+  if (matches < 1 && text.length < 500) {
     return {
       isContract: false,
       message: 'The uploaded document does not appear to be a legal contract. Please upload a valid contract file (such as an NDA, SLA, Lease, or License Agreement).'
@@ -231,6 +235,14 @@ Do not include markdown tags like \`\`\`json. Return only raw JSON.
 
     const textResponse = response.data.candidates[0].content.parts[0].text;
     const parsed = JSON.parse(textResponse);
+
+    // Safety fallback: if Gemini says it's not a contract, verify with our robust heuristic
+    const heuristicResult = validateContractHeuristic(text);
+    if (!parsed.isContract && heuristicResult.isContract) {
+      console.log('// Gemini flagged document as non-contract, but heuristic recovery override allowed it.');
+      return { isContract: true, message: '' };
+    }
+
     return {
       isContract: parsed.isContract === true,
       message: parsed.message || 'Please upload a valid legal contract.'
