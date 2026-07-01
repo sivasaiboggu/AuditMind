@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useContractStore } from '../store/contractStore';
 import { useAuth } from '../lib/auth-context';
@@ -12,12 +12,14 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const { contracts, setContracts, setActiveContract } = useContractStore();
+  const [notification, setNotification] = useState<string | null>(null);
 
   const fetchContracts = async () => {
     try {
-      const response = await fetch(`${API_URL}/contracts`);
+      const query = user?.id ? `?userId=${user.id}` : '';
+      const response = await fetch(`${API_URL}/contracts${query}`);
       if (response.ok) {
         const data = await response.json();
         setContracts(data);
@@ -46,6 +48,24 @@ export default function Dashboard() {
         (payload) => {
           console.log('// Real-time DB Event Received:', payload);
           fetchContracts(); // Refetch database items instantly
+
+          // Show browser notification toast on change
+          if (payload.eventType === 'INSERT') {
+            const doc = payload.new as any;
+            if (doc.user_id === user?.id) {
+              setNotification(`New contract analysis scheduled: ${doc.name}`);
+            }
+          } else if (payload.eventType === 'UPDATE') {
+            const oldDoc = payload.old as any;
+            const newDoc = payload.new as any;
+            if (newDoc.user_id === user?.id) {
+              if (newDoc.status === 'completed' && oldDoc.status !== 'completed') {
+                setNotification(`Analysis complete! ${newDoc.name} is ready.`);
+              } else if (newDoc.status === 'failed' && oldDoc.status !== 'failed') {
+                setNotification(`Analysis failed for ${newDoc.name}: ${newDoc.error || 'Server error'}`);
+              }
+            }
+          }
         }
       )
       .subscribe();
@@ -53,7 +73,7 @@ export default function Dashboard() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [user]);
 
   // Compute stats based on active database entries
   const completedContracts = contracts.filter(c => c.status === 'completed');
@@ -159,6 +179,16 @@ export default function Dashboard() {
       <Navbar currentView="dashboard" setView={(v) => navigate(v === 'dashboard' ? '/dashboard' : '/upload')} onLogout={handleLogout} />
       
       <main className="flex-grow max-w-7xl mx-auto px-6 py-8 space-y-8 w-full">
+        {/* Real-time Notifications */}
+        {notification && (
+          <div className="bg-accent-cyan/10 border border-accent-cyan/20 p-3.5 rounded text-xs font-mono text-accent-cyan flex items-center justify-between shadow-[0_0_15px_rgba(0,229,255,0.05)] animate-pulse">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-accent-cyan animate-ping"></span>
+              <span>{notification}</span>
+            </div>
+            <button onClick={() => setNotification(null)} className="text-[10px] hover:text-white uppercase tracking-wider font-bold">Dismiss</button>
+          </div>
+        )}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-3xl font-sans font-semibold tracking-tight text-text-primary">

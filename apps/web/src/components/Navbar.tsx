@@ -1,5 +1,6 @@
 import React from 'react';
 import { useContractStore } from '../store/contractStore';
+import { useAuth } from '../lib/auth-context';
 import { LayoutDashboard, FileSearch, LogOut } from 'lucide-react';
 
 interface NavbarProps {
@@ -9,7 +10,8 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ currentView, setView, onLogout }) => {
-  const { activeContract, user } = useContractStore();
+  const { activeContract } = useContractStore();
+  const { user } = useAuth();
 
   return (
     <header className="glass-panel border-b border-white/5 px-6 py-4 flex items-center justify-between sticky top-0 z-50">
@@ -61,9 +63,27 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setView, onLogout }
 
       <div className="flex items-center gap-4">
         {user && (
-          <div className="hidden lg:flex flex-col text-right">
-            <span className="text-xs font-mono text-text-secondary">{user.email}</span>
-            <span className="text-[10px] font-mono text-accent-cyan uppercase tracking-wider">Access Granted</span>
+          <div className="flex items-center gap-3">
+            <div className="hidden md:flex flex-col text-right">
+              <span className="text-xs font-mono font-bold text-text-primary">
+                {user.fullName || user.email.split('@')[0]}
+              </span>
+              <span className="text-[9px] font-mono text-accent-cyan uppercase tracking-wider">
+                {user.email}
+              </span>
+            </div>
+            
+            {user.avatarUrl ? (
+              <img
+                src={user.avatarUrl}
+                alt="Profile"
+                className="w-8 h-8 rounded-full border border-accent-cyan/30 shadow-[0_0_10px_rgba(0,229,255,0.2)]"
+              />
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-accent-cyan/10 border border-accent-cyan/30 flex items-center justify-center text-xs font-mono font-bold text-accent-cyan shadow-[0_0_10px_rgba(0,229,255,0.1)]">
+                {user.email[0].toUpperCase()}
+              </div>
+            )}
           </div>
         )}
         

@@ -10,7 +10,7 @@ const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3000/ws';
 
 export default function UploadPage() {
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const { isAnalyzing, setIsAnalyzing, progress, setProgress, setActiveContract } = useContractStore();
   const [isDragOver, setIsDragOver] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
@@ -68,7 +68,8 @@ export default function UploadPage() {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch(`${API_URL}/contracts/upload`, {
+      const query = user?.id ? `?userId=${user.id}` : '';
+      const response = await fetch(`${API_URL}/contracts/upload${query}`, {
         method: 'POST',
         body: formData
       });

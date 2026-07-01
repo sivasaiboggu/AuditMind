@@ -57,6 +57,8 @@ app.post('/contracts/upload', async (req, reply) => {
     return reply.status(400).send({ error: 'No file uploaded' });
   }
 
+  const { userId } = req.query as { userId?: string };
+
   const contractId = randomUUID();
   const buffer = await data.toBuffer();
   const fileName = data.filename;
@@ -69,7 +71,7 @@ app.post('/contracts/upload', async (req, reply) => {
   // Insert contract metadata
   const newContract: Contract = {
     id: contractId,
-    userId: '',
+    userId: userId || '',
     name: fileName,
     filePath,
     status: 'processing',
@@ -96,6 +98,7 @@ app.post('/contracts/upload', async (req, reply) => {
     .from('contracts')
     .insert({
       id: contractId,
+      user_id: userId || null,
       name: fileName,
       file_path: filePath,
       status: 'processing',
@@ -113,16 +116,19 @@ app.post('/contracts/upload', async (req, reply) => {
   return reply.status(201).send(newContract);
 });
 
-// Retrieve Contract List
 app.get('/contracts', async (req, reply) => {
   if (!supabase) {
     return reply.status(500).send({ error: 'Supabase database client is not configured.' });
   }
 
-  const { data, error } = await supabase
-    .from('contracts')
-    .select('*')
-    .order('created_at', { ascending: false });
+  const { userId } = req.query as { userId?: string };
+
+  let query = supabase.from('contracts').select('*');
+  if (userId) {
+    query = query.eq('user_id', userId);
+  }
+
+  const { data, error } = await query.order('created_at', { ascending: false });
 
   if (error) return reply.status(500).send({ error: error.message });
   return data.map(item => ({
