@@ -72,7 +72,7 @@ Do not include markdown tags like \`\`\`json. Return only raw JSON.
       generationConfig: {
         responseMimeType: 'application/json'
       }
-    });
+    }, { timeout: 5000 });
 
     const textResponse = response.data.candidates[0].content.parts[0].text;
     const parsed = JSON.parse(textResponse);
@@ -165,3 +165,79 @@ export async function streamChatWithGemini(
     onToken('\n[Gemini Streaming Connection Interrupted. Please check API Key and connectivity]');
   }
 }
+
+/**
+ * Validates whether the document content looks like a legal contract/agreement.
+ * Uses legal keyword density as a fast heuristic.
+ */
+function validateContractHeuristic(text: string): { isContract: boolean; message: string } {
+  const lowercase = text.toLowerCase();
+  const legalKeywords = [
+    'agreement', 'contract', 'hereby', 'indemnify', 'indemnification',
+    'liability', 'jurisdiction', 'confidentiality', 'termination',
+    'licensor', 'licensee', 'covenant', 'whereas', 'governing law'
+  ];
+  let matches = 0;
+  for (const kw of legalKeywords) {
+    if (lowercase.includes(kw)) {
+      matches++;
+    }
+  }
+  if (matches < 3) {
+    return {
+      isContract: false,
+      message: 'The uploaded document does not appear to be a legal contract. Please upload a valid contract file (such as an NDA, SLA, Lease, or License Agreement).'
+    };
+  }
+  return { isContract: true, message: '' };
+}
+
+/**
+ * Validates if the document is a legal contract using Gemini.
+ */
+export async function validateContractWithGemini(text: string): Promise<{ isContract: boolean; message: string }> {
+  if (!GEMINI_API_KEY) {
+    return validateContractHeuristic(text);
+  }
+
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+    const sampleText = text.substring(0, 1500);
+    const prompt = `
+You are an expert legal document triage assistant. 
+Analyze the following text snippet from the beginning of an uploaded document and determine if this document is a legal contract, agreement, covenant, terms of service, NDA, or similar binding legal instrument.
+If it is technical documentation, a tutorial, source code, a recipe, a book, a resume, or generic text, it is NOT a contract.
+
+Document Text Snippet:
+"${sampleText}"
+
+Output your response as a valid JSON object matching the following structure:
+{
+  "isContract": true or false,
+  "message": "If isContract is true, leave empty. If false, write a polite, clear explanation asking the user to upload a valid legal contract (e.g. NDA, Service Agreement, or Lease) instead."
+}
+
+Do not include markdown tags like \`\`\`json. Return only raw JSON.
+`;
+
+    const response = await axios.post(url, {
+      contents: [{
+        parts: [{ text: prompt }]
+      }],
+      generationConfig: {
+        responseMimeType: 'application/json'
+      }
+    }, { timeout: 3000 });
+
+    const textResponse = response.data.candidates[0].content.parts[0].text;
+    const parsed = JSON.parse(textResponse);
+    return {
+      isContract: parsed.isContract === true,
+      message: parsed.message || 'Please upload a valid legal contract.'
+    };
+  } catch (err) {
+    console.error('Gemini contract validation failed, falling back to heuristic:', err);
+    return validateContractHeuristic(text);
+  }
+}
+

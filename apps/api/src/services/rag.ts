@@ -44,7 +44,7 @@ export async function getEmbedding(text: string): Promise<number[]> {
       content: {
         parts: [{ text }]
       }
-    });
+    }, { timeout: 3000 });
     return response.data.embedding.values;
   } catch (error) {
     console.error('Failed to retrieve Gemini embedding:', error);

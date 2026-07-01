@@ -2,7 +2,7 @@ import { Redis } from '@upstash/redis';
 import { extractText, segmentClauses } from './parser.js';
 import { classifyClauseRisk, getRiskScore } from './ml.js';
 import { retrieveRegulations } from './rag.js';
-import { analyzeClauseWithGemini } from './gemini.js';
+import { analyzeClauseWithGemini, validateContractWithGemini } from './gemini.js';
 import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -149,6 +149,13 @@ async function processContract(
     updateProgress(contractId, 'extracting', 15, 'Extracting text from document body...');
     const rawText = await extractText(buffer, mimeType);
     
+    // Validate legal contract type
+    updateProgress(contractId, 'extracting', 25, 'Validating document type...');
+    const validation = await validateContractWithGemini(rawText);
+    if (!validation.isContract) {
+      throw new Error(validation.message);
+    }
+    
     // 2. Clause Segmentation
     updateProgress(contractId, 'segmenting', 35, 'Segmenting legal clauses...');
     const rawClauses = segmentClauses(rawText);
@@ -158,12 +165,13 @@ async function processContract(
     const clausesToSave = await Promise.all(
       rawClauses.map(async (item) => {
         try {
-          // Run risk model
-          const { label } = await classifyClauseRisk(item.text);
-          const score = await getRiskScore(item.text);
-          
-          // Query RAG corpus
-          const regContext = await retrieveRegulations(item.text);
+          // Run risk classification, scoring, and RAG retrieval in parallel
+          const [classification, score, regContext] = await Promise.all([
+            classifyClauseRisk(item.text),
+            getRiskScore(item.text),
+            retrieveRegulations(item.text)
+          ]);
+          const label = classification.label;
 
           // Call Gemini for redlines
           const analysis = await analyzeClauseWithGemini(item.title, item.text, regContext);
@@ -237,7 +245,7 @@ async function processContract(
     console.log(`// [Queue] Completed processing contract ${contractId} successfully.`);
   } catch (error) {
     console.error(`// [Queue] Processing failed for contract ${contractId}:`, error);
-    updateProgress(contractId, 'failed', 0, `Analysis pipeline crashed: ${(error as Error).message}`);
+    updateProgress(contractId, 'failed', 0, (error as Error).message);
     
     if (supabase) {
       await supabase.from('contracts').update({ status: 'failed' }).eq('id', contractId);
