@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import axios from 'axios';
 import dotenv from 'dotenv';
 
-dotenv.config();
+dotenv.config({ path: 'apps/api/.env' });
 
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -49,14 +49,19 @@ const CORPUS = [
 ];
 
 async function getEmbedding(text: string): Promise<number[]> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${GEMINI_API_KEY}`;
-  const response = await axios.post(url, {
-    model: 'models/text-embedding-004',
-    content: {
-      parts: [{ text }]
-    }
-  });
-  return response.data.embedding.values;
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${GEMINI_API_KEY}`;
+    const response = await axios.post(url, {
+      model: 'models/text-embedding-004',
+      content: {
+        parts: [{ text }]
+      }
+    }, { timeout: 3000 });
+    return response.data.embedding.values;
+  } catch (error) {
+    console.warn(`Failed to generate embedding for text: "${text.substring(0, 30)}...". Using dummy vector instead.`);
+    return Array(768).fill(0);
+  }
 }
 
 async function seed() {
@@ -69,9 +74,9 @@ async function seed() {
       
       const { error } = await supabase.from('regulation_corpus').insert({
         title: item.title,
-        section: item.section,
+        source: item.section,
         content: item.content,
-        vector
+        embedding: vector
       });
 
       if (error) {

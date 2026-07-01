@@ -118,3 +118,27 @@ CREATE POLICY "Users can view messages of own sessions" ON public.chat_messages 
   ));
 
 CREATE POLICY "Allow public read access to regulation_corpus" ON public.regulation_corpus FOR SELECT USING (true);
+
+-- Hybrid Vector Matching RPC Function for pgvector
+CREATE OR REPLACE FUNCTION match_regulations (
+  query_embedding vector(768),
+  match_threshold float,
+  match_count int
+)
+RETURNS TABLE (
+  id uuid,
+  title text,
+  content text,
+  similarity float
+)
+AS $$
+  SELECT
+    regulation_corpus.id,
+    regulation_corpus.title,
+    regulation_corpus.content,
+    1 - (regulation_corpus.embedding <=> query_embedding) AS similarity
+  FROM regulation_corpus
+  WHERE 1 - (regulation_corpus.embedding <=> query_embedding) > match_threshold
+  ORDER BY regulation_corpus.embedding <=> query_embedding
+  LIMIT match_count;
+$$ LANGUAGE sql STABLE;
