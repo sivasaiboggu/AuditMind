@@ -160,7 +160,7 @@ export async function streamChatWithGemini(
         reject(err);
       });
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Gemini stream failed:', error);
     
     // Determine the latest user query from the messages array
@@ -169,27 +169,50 @@ export async function streamChatWithGemini(
     
     // Find matching sections in the contract context using keyword intersection
     const matchingLines: string[] = [];
-    const lines = contractContext.split(/\n+/);
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (trimmed.length < 20) continue;
-      
-      const keywords = lowercaseQuery.split(/\s+/).filter(w => w.length > 3);
-      const isMatch = keywords.some(word => trimmed.toLowerCase().includes(word));
-      if (isMatch) {
-        matchingLines.push(trimmed);
-        if (matchingLines.length >= 3) break;
+    const lines = contractContext.split(/\n+/).map(l => l.trim()).filter(l => l.length > 15);
+    
+    const keywords = lowercaseQuery
+      .replace(/[?:!.,;'"()\[\]]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length >= 3 && !['what', 'when', 'where', 'with', 'from', 'this', 'that', 'then', 'have', 'does', 'clause', 'section', 'the', 'and', 'for'].includes(w));
+
+    if (keywords.length > 0) {
+      for (const line of lines) {
+        const isMatch = keywords.some(word => line.toLowerCase().includes(word));
+        if (isMatch) {
+          matchingLines.push(line);
+          if (matchingLines.length >= 4) break;
+        }
       }
     }
     
-    let localRecoveryText = '';
-    if (matchingLines.length > 0) {
-      localRecoveryText = `\n\n[Local RAG Recovery Search Results]:\nBased on a local scan of the contract text, I found these matching provisions:\n${matchingLines.map(line => `• "${line}"`).join('\n')}`;
+    // Check if the error is a quota/auth error (403) vs a real crash
+    const isQuotaError = error?.response?.status === 403 || error?.response?.status === 429 || String(error?.message).includes('403') || String(error?.message).includes('429');
+    
+    let response = '';
+    
+    if (isQuotaError) {
+      response = `⚠️ AI Chat is currently in Local Search Mode (Gemini API quota reached).`;
     } else {
-      localRecoveryText = `\n\n[Local RAG Recovery Search Results]:\nScanned the contract text, but no specific matches for your keywords were found in the document body.`;
+      response = `⚠️ AI Chat is currently in Local Search Mode (connection error).`;
+    }
+    
+    if (matchingLines.length > 0) {
+      response += `\n\nBased on a local scan of this contract, here are the most relevant provisions for your query:\n\n${matchingLines.map((line, i) => `${i + 1}. ${line}`).join('\n\n')}`;
+      response += `\n\nFor deeper AI-powered analysis, please update your GEMINI_API_KEY in apps/api/.env with an active key from https://aistudio.google.com/`;
+    } else {
+      // Show the first few clauses as baseline context
+      const baseline = lines.slice(0, 3);
+      response += `\n\nI scanned the contract text but couldn't find an exact match for your query. Here are the primary provisions of this agreement:\n\n${baseline.map((line, i) => `${i + 1}. ${line}`).join('\n\n')}`;
+      response += `\n\nFor full AI-powered Q&A, update your GEMINI_API_KEY in apps/api/.env with an active key from https://aistudio.google.com/`;
     }
 
-    onToken(`[Gemini API Error: ${(error as Error).message}. Please ensure a valid, active GEMINI_API_KEY is configured in apps/api/.env]${localRecoveryText}`);
+    // Stream the response token by token for smooth UX
+    const words = response.split(' ');
+    for (const word of words) {
+      await new Promise(r => setTimeout(r, 18));
+      onToken(word + ' ');
+    }
   }
 }
 

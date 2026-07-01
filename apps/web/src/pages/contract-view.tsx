@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useContractStore } from '../store/contractStore';
 import { useAuth } from '../lib/auth-context';
 import { Navbar } from '../components/Navbar';
-import { AlertTriangle, ArrowLeft, Send, FileEdit, MessageSquareCode, FileText } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Send, FileEdit, MessageSquareCode, FileText, Copy, CheckCheck, Wifi, WifiOff, Bot } from 'lucide-react';
 import type { Clause, ChatMessage } from '@auditmind/shared-types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -27,8 +27,16 @@ export default function ContractView() {
   const [selectedClause, setSelectedClause] = useState<Clause | null>(null);
   const [chatInput, setChatInput] = useState('');
   const [isChatGenerating, setIsChatGenerating] = useState(false);
+  const [wsConnected, setWsConnected] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+
+  const handleCopy = (id: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   // 1. Fetch real clauses from database on mount or ID change
   const fetchClauses = async (contractId: string) => {
@@ -85,6 +93,7 @@ export default function ContractView() {
 
     ws.onopen = () => {
       console.log('// WS: Connected to RAG chat drawer');
+      setWsConnected(true);
       if (id) {
         ws.send(JSON.stringify({
           type: 'subscribe',
@@ -92,6 +101,8 @@ export default function ContractView() {
         }));
       }
     };
+
+    ws.onclose = () => setWsConnected(false);
 
     ws.onerror = (err) => {
       console.error('WebSocket RAG chat error:', err);
@@ -347,7 +358,7 @@ export default function ContractView() {
               </div>
 
               {/* WebSocket RAG Chat Drawer */}
-              <div className="h-[240px] border-t border-white/5 bg-background-panel flex flex-col overflow-hidden">
+              <div className="h-[270px] border-t border-white/5 bg-background-panel flex flex-col overflow-hidden">
                 <div className="border-b border-white/5 px-4 py-2 flex items-center justify-between bg-white/1">
                   <div className="flex items-center gap-2 text-text-primary">
                     <MessageSquareCode className="w-4 h-4 text-accent-cyan" />
@@ -355,62 +366,124 @@ export default function ContractView() {
                       Document Q&A
                     </span>
                   </div>
-                  <span className="text-[9px] font-mono text-risk-low uppercase bg-risk-low/5 border border-risk-low/20 px-1.5 py-0.5 rounded animate-pulse">
-                    Connected
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {isChatGenerating && (
+                      <span className="text-[9px] font-mono text-risk-medium uppercase bg-risk-medium/5 border border-risk-medium/20 px-1.5 py-0.5 rounded flex items-center gap-1">
+                        <span className="inline-block w-1 h-1 rounded-full bg-risk-medium animate-bounce" style={{animationDelay:'0ms'}} />
+                        <span className="inline-block w-1 h-1 rounded-full bg-risk-medium animate-bounce" style={{animationDelay:'150ms'}} />
+                        <span className="inline-block w-1 h-1 rounded-full bg-risk-medium animate-bounce" style={{animationDelay:'300ms'}} />
+                      </span>
+                    )}
+                    {wsConnected ? (
+                      <span className="text-[9px] font-mono text-risk-low uppercase bg-risk-low/5 border border-risk-low/20 px-1.5 py-0.5 rounded flex items-center gap-1">
+                        <Wifi className="w-2.5 h-2.5" /> Live
+                      </span>
+                    ) : (
+                      <span className="text-[9px] font-mono text-risk-medium uppercase bg-risk-medium/5 border border-risk-medium/20 px-1.5 py-0.5 rounded flex items-center gap-1">
+                        <WifiOff className="w-2.5 h-2.5" /> Offline
+                      </span>
+                    )}
+                  </div>
                 </div>
 
-                <div className="flex-grow overflow-y-auto p-4 space-y-3">
-                  <div className="bg-white/2 border border-white/5 p-3 rounded text-xs font-sans text-text-secondary leading-relaxed">
-                    <span className="font-mono text-[10px] text-accent-cyan block mb-1">AuditMind Assistant</span>
-                    Ask specific questions about constraints, loopholes, liabilities, or deadlines within the current agreement.
+                <div className="flex-grow overflow-y-auto p-3 space-y-2">
+                  {/* Welcome message */}
+                  <div className="flex items-start gap-2">
+                    <div className="w-5 h-5 rounded-full bg-accent-cyan/10 border border-accent-cyan/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <Bot className="w-3 h-3 text-accent-cyan" />
+                    </div>
+                    <div className="bg-white/2 border border-white/5 p-2.5 rounded-lg rounded-tl-none text-xs font-sans text-text-secondary leading-relaxed flex-1">
+                      Ask questions about this contract — obligations, risks, deadlines, or clause implications.
+                    </div>
                   </div>
                   
                   {chatMessages.map((msg) => {
-                    const isError = msg.message.includes('[Gemini API Error:');
+                    const isLocalSearch = msg.message.includes('Local Search Mode') || msg.message.includes('⚠️');
+                    const isUser = msg.sender === 'user';
                     return (
-                      <div
-                        key={msg.id}
-                        className={`p-3 rounded text-xs font-sans leading-relaxed border ${
-                          msg.sender === 'user'
-                            ? 'bg-accent-cyan/5 border-accent-cyan/10 ml-6 text-text-primary'
-                            : isError
-                            ? 'bg-risk-critical/5 border-risk-critical/20 mr-6 text-risk-critical font-mono shadow-[0_0_15px_rgba(255,77,77,0.02)]'
-                            : 'bg-white/2 border-white/5 mr-6 text-text-secondary'
-                        }`}
-                      >
-                        <span className={`font-mono text-[9px] block mb-1 ${isError ? 'text-risk-critical font-bold' : 'text-text-muted'}`}>
-                          {msg.sender === 'user' ? 'You' : isError ? 'System Notice // API Limitation' : 'AuditMind'}
-                        </span>
-                        <div className="whitespace-pre-line select-text font-sans">{msg.message}</div>
+                      <div key={msg.id} className={`flex items-start gap-2 ${isUser ? 'flex-row-reverse' : ''}`}>
+                        {!isUser && (
+                          <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 border ${
+                            isLocalSearch
+                              ? 'bg-risk-medium/10 border-risk-medium/30'
+                              : 'bg-accent-cyan/10 border-accent-cyan/20'
+                          }`}>
+                            <Bot className={`w-3 h-3 ${isLocalSearch ? 'text-risk-medium' : 'text-accent-cyan'}`} />
+                          </div>
+                        )}
+                        <div className={`relative group p-2.5 rounded-lg text-xs font-sans leading-relaxed max-w-[88%] border ${
+                          isUser
+                            ? 'bg-accent-cyan/8 border-accent-cyan/15 rounded-tr-none text-text-primary'
+                            : isLocalSearch
+                            ? 'bg-risk-medium/5 border-risk-medium/20 rounded-tl-none text-risk-medium'
+                            : 'bg-white/2 border-white/5 rounded-tl-none text-text-secondary'
+                        }`}>
+                          {!isUser && (
+                            <span className={`font-mono text-[9px] block mb-1 ${
+                              isLocalSearch ? 'text-risk-medium font-bold' : 'text-text-muted'
+                            }`}>
+                              {isLocalSearch ? '⚠ AuditMind · Local Search Mode' : 'AuditMind'}
+                            </span>
+                          )}
+                          <div className="whitespace-pre-line select-text">{msg.message}</div>
+                          {/* Copy button */}
+                          <button
+                            onClick={() => handleCopy(msg.id, msg.message)}
+                            className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 p-0.5 rounded text-text-muted hover:text-text-primary precise-transition"
+                          >
+                            {copiedId === msg.id
+                              ? <CheckCheck className="w-3 h-3 text-risk-low" />
+                              : <Copy className="w-3 h-3" />}
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
+
+                  {/* Animated typing indicator */}
+                  {isChatGenerating && chatMessages[chatMessages.length - 1]?.message === '' && (
+                    <div className="flex items-start gap-2">
+                      <div className="w-5 h-5 rounded-full bg-accent-cyan/10 border border-accent-cyan/20 flex items-center justify-center flex-shrink-0">
+                        <Bot className="w-3 h-3 text-accent-cyan" />
+                      </div>
+                      <div className="bg-white/2 border border-white/5 p-2.5 rounded-lg rounded-tl-none flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-accent-cyan animate-bounce" style={{animationDelay:'0ms'}} />
+                        <span className="w-1.5 h-1.5 rounded-full bg-accent-cyan animate-bounce" style={{animationDelay:'150ms'}} />
+                        <span className="w-1.5 h-1.5 rounded-full bg-accent-cyan animate-bounce" style={{animationDelay:'300ms'}} />
+                      </div>
+                    </div>
+                  )}
                   <div ref={chatEndRef} />
                 </div>
 
-                <form onSubmit={handleSendChat} className="border-t border-white/5 p-3 flex gap-2">
+                <form onSubmit={handleSendChat} className="border-t border-white/5 p-2.5 flex gap-2 bg-background-base/30">
                   <input
                     type="text"
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
-                    placeholder={isChatGenerating ? "Generating response..." : "Ask e.g., 'What happens if we breach section 4.2?'"}
+                    placeholder={isChatGenerating ? 'AuditMind is thinking...' : "Ask e.g., 'What happens if we breach section 4.2?'"}
                     disabled={isChatGenerating}
-                    className="flex-grow bg-background-base border border-white/10 outline-none rounded py-2 px-3 text-xs font-mono text-text-primary focus:border-accent-cyan/50 focus:ring-1 focus:ring-accent-cyan/20 precise-transition disabled:opacity-50"
+                    className="flex-grow bg-background-base border border-white/10 outline-none rounded-lg py-2 px-3 text-xs font-sans text-text-primary placeholder:text-text-muted focus:border-accent-cyan/50 focus:ring-1 focus:ring-accent-cyan/20 precise-transition disabled:opacity-50"
                   />
                   <button
                     type="submit"
-                    disabled={isChatGenerating}
-                    className="p-2 bg-accent-cyan/10 hover:bg-accent-cyan/20 border border-accent-cyan/30 hover:border-accent-cyan text-accent-cyan rounded precise-transition cursor-pointer disabled:opacity-50"
+                    disabled={isChatGenerating || !wsConnected}
+                    className="px-3 py-2 bg-accent-cyan/10 hover:bg-accent-cyan/20 border border-accent-cyan/30 hover:border-accent-cyan text-accent-cyan rounded-lg precise-transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
                   >
-                    <Send className="w-4 h-4" />
+                    <Send className="w-3.5 h-3.5" />
                   </button>
                 </form>
               </div>
             </div>
           ) : (
-            <div className="flex-grow flex items-center justify-center text-text-muted font-mono text-sm p-6 text-center">
-              SELECT A CLAUSE FROM THE DOCUMENT LIST TO ACCESS RISK DETAILS
+            <div className="flex-grow flex flex-col items-center justify-center text-text-muted p-8 text-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-white/3 border border-white/8 flex items-center justify-center">
+                <FileText className="w-5 h-5 text-text-muted" />
+              </div>
+              <div>
+                <p className="font-mono text-xs uppercase tracking-widest mb-1">No Clause Selected</p>
+                <p className="text-xs text-text-muted/60">Click any clause on the left to view its risk analysis, suggested revisions, and ask questions.</p>
+              </div>
             </div>
           )}
         </div>
