@@ -27,3 +27,7 @@ __pycache__/
 .idea/
 .DS_Store
 Thumbs.db
+
+*.tsbuildinfo
+dist/
+.npmrc.local
