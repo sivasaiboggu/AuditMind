@@ -4,7 +4,7 @@ import { useAuth } from '../lib/auth-context';
 import { Shield, Mail, Terminal, ArrowRight, CheckCircle2 } from 'lucide-react';
 
 export default function Login() {
-  const { loginWithGoogle, sendOTP, verifyOTP, loginBypass } = useAuth();
+  const { user, loading: authLoading, loginWithGoogle, sendOTP, verifyOTP, loginBypass } = useAuth();
   const navigate = useNavigate();
   
   const [email, setEmail] = useState('');
@@ -13,6 +13,13 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Redirect to dashboard if session already active
+  useEffect(() => {
+    if (!authLoading && user) {
+      navigate('/dashboard');
+    }
+  }, [user, authLoading, navigate]);
 
   // Synapse background animation
   useEffect(() => {

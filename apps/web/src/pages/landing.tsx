@@ -1,9 +1,19 @@
 import { useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../lib/auth-context';
 import { ArrowRight, Cpu, FileText, Shield } from 'lucide-react';
 
 export default function Landing() {
+  const navigate = useNavigate();
+  const { user, loading } = useAuth();
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Auto-redirect if session is active
+  useEffect(() => {
+    if (!loading && user) {
+      navigate('/dashboard');
+    }
+  }, [user, loading, navigate]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

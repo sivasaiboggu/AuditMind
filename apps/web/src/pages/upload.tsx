@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useContractStore } from '../store/contractStore';
 import { useAuth } from '../lib/auth-context';
 import { Navbar } from '../components/Navbar';
-import { Upload, ArrowLeft } from 'lucide-react';
+import { Upload, ArrowLeft, Terminal } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3000/ws';
@@ -13,6 +13,7 @@ export default function UploadPage() {
   const { user, logout } = useAuth();
   const { isAnalyzing, setIsAnalyzing, progress, setProgress, setActiveContract } = useContractStore();
   const [isDragOver, setIsDragOver] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -39,6 +40,7 @@ export default function UploadPage() {
   };
 
   const handleUploadFile = async (file: File) => {
+    setError(null);
     setIsAnalyzing(true);
     setProgress({
       contractId: '',
@@ -114,7 +116,8 @@ export default function UploadPage() {
           } else if (progressData.stage === 'failed') {
             ws.close();
             setIsAnalyzing(false);
-            alert(`Analysis Pipeline Failed: ${progressData.message}`);
+            setProgress(null);
+            setError(progressData.message || 'Analysis pipeline processing failed.');
           }
         }
       };
@@ -122,7 +125,8 @@ export default function UploadPage() {
       ws.onerror = (err) => {
         console.error('WebSocket connection error:', err);
         setIsAnalyzing(false);
-        alert('Realtime update pipe connection interrupted.');
+        setProgress(null);
+        setError('Realtime update pipeline connection was interrupted.');
       };
 
     } catch (err: any) {
@@ -130,7 +134,7 @@ export default function UploadPage() {
       console.error(err);
       setIsAnalyzing(false);
       setProgress(null);
-      alert(err.message || 'Failed to ingest file');
+      setError(err.message || 'Failed to ingest document file.');
     }
   };
 
@@ -172,6 +176,22 @@ export default function UploadPage() {
               Choose a contract file to analyze risk.
             </p>
           </div>
+
+          {error && (
+            <div className="bg-risk-critical/10 border border-risk-critical/30 rounded p-4 text-xs font-mono text-risk-critical flex gap-3 items-start relative animate-fade-in shadow-[0_0_15px_rgba(255,77,77,0.05)]">
+              <Terminal className="w-5 h-5 shrink-0 mt-0.5" />
+              <div className="flex-grow space-y-1.5">
+                <div className="font-bold text-sm tracking-tight">INGESTION DIAGNOSTIC WARNING</div>
+                <div className="leading-relaxed text-text-primary/95">{error}</div>
+              </div>
+              <button
+                onClick={() => setError(null)}
+                className="text-[10px] text-text-muted hover:text-text-primary uppercase tracking-widest font-bold precise-transition"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
 
           <div
             onDragOver={handleDragOver}
