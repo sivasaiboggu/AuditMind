@@ -26,7 +26,15 @@ const progressSubscriptions = new Map<string, any>();
 await initializeQueue();
 
 // Register plugins
-await app.register(cors, { origin: '*' });
+await app.register(cors, {
+  origin: [
+    'http://localhost:5173',
+    'http://localhost:4173',
+    /\.vercel\.app$/,
+    process.env.FRONTEND_URL || 'http://localhost:5173'
+  ],
+  credentials: true
+});
 await app.register(multipart, { limits: { fileSize: 15 * 1024 * 1024 } });
 await app.register(websocket);
 
@@ -45,9 +53,17 @@ setProgressListener((contractId, stage, percent, message) => {
  * REST ENDPOINTS
  */
 
-// Health check
+// Health check — used by Vercel, Railway, and uptime monitors
 app.get('/health', async () => {
-  return { status: 'healthy', timestamp: new Date().toISOString() };
+  return {
+    status: 'healthy',
+    service: 'AuditMind API',
+    version: '1.0.0',
+    timestamp: new Date().toISOString(),
+    uptime: Math.round(process.uptime()),
+    database: supabase ? 'connected' : 'not configured',
+    environment: process.env.NODE_ENV || 'development'
+  };
 });
 
 // Upload Contract File
