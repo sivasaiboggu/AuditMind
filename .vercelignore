@@ -1,0 +1,7 @@
+node_modules
+apps/api
+apps/ml-service
+.git
+*.log
+.env
+.env.*
