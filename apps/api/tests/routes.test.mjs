@@ -4,7 +4,7 @@ import WebSocket from 'ws';
 import { once } from 'node:events';
 import { buildApp } from '../dist/app.js';
 
-function isolatedStore() {
+function isolatedStore({storageFails = false} = {}) {
   const rows = [
     { id: 'contract-a', user_id: 'user-a', name: 'Synthetic A', file_path: 'a.txt', status: 'completed' },
     { id: 'contract-b', user_id: 'user-b', name: 'Synthetic B', file_path: 'b.txt', status: 'completed' },
@@ -14,7 +14,7 @@ function isolatedStore() {
     auth: { async getUser(token) {
       return { data: { user: ['user-a','user-b'].includes(token) ? { id: token } : null }, error: null };
     } },
-    storage: { from() { return { async remove(paths) { effects.removed.push(...paths); return { error: null }; } }; } },
+    storage: { from() { return { async remove(paths) { effects.removed.push(...paths); return { error: storageFails ? new Error('private-storage-detail') : null }; } }; } },
     from(table) {
       const filters = {}; let deleting = false;
       const query = {
@@ -33,8 +33,8 @@ function isolatedStore() {
   };
   return { store, effects };
 }
-async function fixture() {
-  const {store,effects}=isolatedStore();
+async function fixture(options) {
+  const {store,effects}=isolatedStore(options);
   const app=await buildApp({store,initialize:async()=>{},enqueue:async(...args)=>effects.queued.push(args),streamChat:async()=>{effects.chats++;}});
   return {app,effects};
 }
@@ -101,4 +101,33 @@ test('real WebSocket admits the owner and serves completed status',async()=>{
     assert.equal(frames[0].type,'subscribed');assert.equal(frames[1].data.stage,'completed');
     assert.equal(effects.chats,0);
   } finally {ws?.terminate();await app.close();}
+});
+
+
+test('browser preflight is accepted but protected requests still need a token',async()=>{
+  const {app}=await fixture();
+  try {
+    const response=await app.inject({method:'OPTIONS',url:'/contracts',headers:{origin:'http://localhost:5173','access-control-request-method':'GET','access-control-request-headers':'authorization'}});
+    assert.equal(response.statusCode,204);
+    assert.equal(response.headers['access-control-allow-origin'],'http://localhost:5173');
+    assert.equal((await app.inject({url:'/contracts',headers:{origin:'http://localhost:5173'}})).statusCode,401);
+    const denied=await app.inject({method:'OPTIONS',url:'/contracts',headers:{origin:'https://untrusted.invalid','access-control-request-method':'GET'}});
+    assert.equal(denied.headers['access-control-allow-origin'],undefined);
+  } finally {await app.close();}
+});
+
+test('storage deletion failure preserves database record and hides provider details',async()=>{
+  const {app,effects}=await fixture({storageFails:true});
+  try {
+    const response=await app.inject({method:'DELETE',url:'/contracts/contract-a',headers:headers('user-a')});
+    assert.equal(response.statusCode,500);
+    assert.deepEqual(effects.deleted,[]);
+    assert.doesNotMatch(response.body,/private-storage-detail/);
+  } finally {await app.close();}
+});
+
+test('health reports configured state without pretending it probed connectivity',async()=>{
+  const {app}=await fixture();
+  try {assert.match((await app.inject({url:'/health'})).json().database,/not checked/);}
+  finally {await app.close();}
 });

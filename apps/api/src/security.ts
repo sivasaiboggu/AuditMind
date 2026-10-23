@@ -19,6 +19,8 @@ export async function verifiedUserId(store: IdentityStore | null, token: unknown
 export function installContractAuth(app: FastifyInstance, store: IdentityStore | null) {
   app.decorateRequest('authenticatedUserId', null);
   app.addHook('onRequest', async (req, reply) => {
+    // CORS preflight carries no bearer token. The subsequent request is verified.
+    if (req.method === 'OPTIONS') return;
     if (!req.url.split('?')[0].match(/^\/contracts(?:\/|$)/)) return;
     const header = req.headers.authorization;
     const match = typeof header === 'string' ? /^Bearer ([^\s]+)$/i.exec(header) : null;

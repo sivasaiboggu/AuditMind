@@ -67,7 +67,7 @@ app.get('/health', async () => {
     version: '1.0.0',
     timestamp: new Date().toISOString(),
     uptime: Math.round(process.uptime()),
-    database: supabase ? 'connected' : 'not configured',
+    database: supabase ? 'configured, connectivity not checked' : 'not configured',
     environment: process.env.NODE_ENV || 'development'
   };
 });
@@ -155,7 +155,7 @@ app.get('/contracts', async (req, reply) => {
     .eq('user_id', userId)
     .order('created_at', { ascending: false });
 
-  if (error) return reply.status(500).send({ error: error.message });
+  if (error) return reply.status(500).send({ error: 'The database request could not be completed.' });
   return data.map(item => ({
     id: item.id,
     userId: item.user_id,
@@ -189,7 +189,8 @@ app.delete('/contracts/:id', async (req, reply) => {
     .single();
 
   if (contract?.file_path) {
-    await supabase.storage.from('contracts').remove([contract.file_path]);
+    const { error: storageError } = await supabase.storage.from('contracts').remove([contract.file_path]);
+    if (storageError) return reply.status(500).send({ error: 'Could not remove the stored contract. The database record was kept for retry.' });
   }
 
   // 2. Delete database row
@@ -199,7 +200,7 @@ app.delete('/contracts/:id', async (req, reply) => {
     .eq('user_id', req.authenticatedUserId!)
     .eq('id', id);
 
-  if (error) return reply.status(500).send({ error: error.message });
+  if (error) return reply.status(500).send({ error: 'The database request could not be completed.' });
   return { success: true };
 });
 
@@ -220,7 +221,7 @@ app.get('/contracts/:id/clauses', async (req, reply) => {
     .select('*')
     .eq('contract_id', id);
 
-  if (error) return reply.status(500).send({ error: error.message });
+  if (error) return reply.status(500).send({ error: 'The database request could not be completed.' });
   return data.map(c => ({
     id: c.id,
     contractId: c.contract_id,

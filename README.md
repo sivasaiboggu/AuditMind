@@ -127,3 +127,18 @@ Supabase RLS, real token issuance/expiry, production CORS, live Storage or the
 ML pipeline. No production credentials, external model calls or migrations are
 used by this suite. A two-user isolated Supabase end-to-end check is still
 needed before treating the coupled API/client update as deployment-ready.
+
+### Browser-auth and deletion checkpoint
+
+Contract CORS preflight now bypasses bearer verification only for `OPTIONS`;
+actual contract requests still require a server-verified token. Synthetic route
+tests cover an allowed localhost origin, an untrusted origin and an unauthenticated
+actual request. This does not replace an isolated real Supabase/RLS/browser test.
+
+Contract deletion stops before removing metadata when storage deletion fails,
+so an unsuccessful cleanup is not reported as success. A later metadata failure
+after successful storage deletion can still leave a record pointing to a missing
+file: storage and Postgres are not one transaction. Reconciliation and a durable
+delete state machine remain future work. Health reports configuration, not an
+unperformed database-connectivity check. Provider DB error text is not returned
+to the browser. No production records or storage objects were changed in tests.
