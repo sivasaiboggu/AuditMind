@@ -33,6 +33,10 @@ Make sure you have installed:
 *   [Supabase Account & Database](https://supabase.com/)
 *   [Upstash Redis Store](https://upstash.com/)
 
+Python commands use the project virtual environment on Windows, Linux, and macOS.
+The setup command uses `py -3` on Windows and `python3` elsewhere. Set the `PYTHON`
+environment variable to a Python executable path when using a different installation.
+
 ### 2. Configure Environment Variables
 Create an `.env` file in the root directory (and copy it to `/apps/api/.env` and `/apps/web/.env`):
 
@@ -71,7 +75,12 @@ To start the entire monorepo in developer mode:
    ```
    *   Vite Client: `http://localhost:5173`
    *   Fastify API: `http://localhost:3000`
-   *   FastAPI ML: `http://localhost:8000`
+   *   Start the ML service separately with `npm run dev:ml`: `http://localhost:8000`
+
+Launcher regression tests (no Python package installation needed):
+```bash
+npm run test:scripts
+```
 
 ---
 
