@@ -1,3 +1,4 @@
+import { authenticatedFetch, sendAuthenticated } from '../lib/api';
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useContractStore } from '../store/contractStore';
@@ -42,7 +43,7 @@ export default function ContractView() {
   // 1. Fetch real clauses from database on mount or ID change
   const fetchClauses = async (contractId: string) => {
     try {
-      const response = await fetch(`${API_URL}/contracts/${contractId}/clauses`);
+      const response = await authenticatedFetch(`${API_URL}/contracts/${contractId}/clauses`);
       if (response.ok) {
         const data = await response.json();
         setActiveClauses(data);
@@ -66,7 +67,7 @@ export default function ContractView() {
       // fetch the contracts from the API to see if it exists.
       const loadContract = async () => {
         try {
-          const response = await fetch(`${API_URL}/contracts`);
+          const response = await authenticatedFetch(`${API_URL}/contracts`);
           if (response.ok) {
             const data = await response.json();
             setContracts(data);
@@ -96,10 +97,10 @@ export default function ContractView() {
       console.log('// WS: Connected to RAG chat drawer');
       setWsConnected(true);
       if (id) {
-        ws.send(JSON.stringify({
+        void sendAuthenticated(ws, {
           type: 'subscribe',
           contractId: id
-        }));
+        }).catch(() => ws.close(1008, 'Authentication required'));
       }
     };
 
@@ -165,11 +166,11 @@ export default function ContractView() {
       }));
 
     // Send chat payload through WebSocket
-    wsRef.current.send(JSON.stringify({
+    void sendAuthenticated(wsRef.current, {
       type: 'chat',
       contractId: id,
       messages: chatPayload
-    }));
+    }).catch(() => wsRef.current?.close(1008, 'Authentication required'));
 
     let accumulatedResponse = '';
 

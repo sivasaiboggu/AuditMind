@@ -1,3 +1,4 @@
+import { authenticatedFetch } from '../lib/api';
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useContractStore } from '../store/contractStore';
@@ -18,8 +19,8 @@ export default function Dashboard() {
 
   const fetchContracts = async () => {
     try {
-      const query = user?.id ? `?userId=${user.id}` : '';
-      const response = await fetch(`${API_URL}/contracts${query}`);
+      const query = '';
+      const response = await authenticatedFetch(`${API_URL}/contracts${query}`);
       if (response.ok) {
         const data = await response.json();
         setContracts(data);
@@ -154,7 +155,7 @@ export default function Dashboard() {
     if (!confirm('Are you sure you want to delete this contract?')) return;
     
     try {
-      const response = await fetch(`${API_URL}/contracts/${id}`, {
+      const response = await authenticatedFetch(`${API_URL}/contracts/${id}`, {
         method: 'DELETE'
       });
       if (response.ok) {

@@ -87,3 +87,43 @@ npm run test:scripts
 ## 🛡️ License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+## API authentication and contract access
+
+Contract HTTP routes require `Authorization: Bearer <Supabase access token>`.
+The API verifies the token with Supabase Auth and derives the user ID server-side;
+a caller-supplied `userId` is not an authentication mechanism. Contract deletion,
+clause reads and WebSocket messages also require ownership of the contract.
+The web client obtains its current session token and sends it with each request.
+WebSocket tokens travel in message frames, not URL query parameters.
+
+Set `FRONTEND_URL` to your exact deployed web origin. Arbitrary `*.vercel.app`
+origins are no longer allowed. Local Vite preview/dev origins remain supported.
+Deploy the matching web and API changes together; older clients without session
+tokens will receive 401 responses. No database migration is part of this patch.
+
+Run the isolated access-control regression suite with `npm run test:security`.
+These tests use fake identities/storage, not a live Supabase project. Verify
+real sign-in, uploads, progress/chat and two-user isolation in a staging project
+before treating the change as end-to-end verified.
+
+### Disposable API ownership checks
+
+The API entry point is separate from `buildApp`, so the actual HTTP and
+WebSocket routes can be tested without listening on a public interface or
+using a live account. Run after installing dependencies:
+
+```bash
+npm run build:api
+node --test --test-timeout=10000 apps/api/tests/*.test.mjs
+```
+
+The route suite uses an in-memory Supabase-compatible test double with two
+synthetic users and two synthetic contracts. It tests verified identity over
+caller-supplied user IDs, owner-only lists and clauses, no cross-owner storage
+or row deletion, authentication before upload dispatch, denied cross-owner
+WebSocket chat, and admitted owner progress subscriptions. It does not prove
+Supabase RLS, real token issuance/expiry, production CORS, live Storage or the
+ML pipeline. No production credentials, external model calls or migrations are
+used by this suite. A two-user isolated Supabase end-to-end check is still
+needed before treating the coupled API/client update as deployment-ready.

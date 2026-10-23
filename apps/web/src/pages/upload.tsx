@@ -1,3 +1,4 @@
+import { authenticatedFetch, sendAuthenticated } from '../lib/api';
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useContractStore } from '../store/contractStore';
@@ -10,7 +11,7 @@ const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3000/ws';
 
 export default function UploadPage() {
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
   const { isAnalyzing, setIsAnalyzing, progress, setProgress, setActiveContract } = useContractStore();
   const [isDragOver, setIsDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -70,8 +71,8 @@ export default function UploadPage() {
       const formData = new FormData();
       formData.append('file', file);
 
-      const query = user?.id ? `?userId=${user.id}` : '';
-      const response = await fetch(`${API_URL}/contracts/upload${query}`, {
+      const query = '';
+      const response = await authenticatedFetch(`${API_URL}/contracts/upload${query}`, {
         method: 'POST',
         body: formData
       });
@@ -93,10 +94,10 @@ export default function UploadPage() {
 
       ws.onopen = () => {
         console.log('// WS: Connection active. Subscribing to contract:', contractId);
-        ws.send(JSON.stringify({
+        void sendAuthenticated(ws, {
           type: 'subscribe',
           contractId
-        }));
+        }).catch(() => ws.close(1008, 'Authentication required'));
       };
 
       ws.onmessage = (event) => {
