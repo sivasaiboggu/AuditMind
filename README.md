@@ -198,3 +198,12 @@ persistence. This is not proof of legal accuracy: heuristic/static fallbacks
 inside individual providers still need separate review. The worker currently
 removes a Redis job before processing and has no durable acknowledgement/retry
 protocol. Crashes and partial database writes still require reconciliation.
+
+
+### Unavailable explanation service
+
+Offline/error explanation fallbacks return an explicit unassessed notice and
+leave the original clause text unchanged. They no longer infer broad indemnity,
+a three-month liability cap or a safer redline from a title. Offline chat does
+not invent default terms or references to nonexistent sections. Four offline
+provider tests cover those examples; no legal assessment quality is established.

@@ -10,23 +10,11 @@ export interface ClauseAnalysisResult {
 /**
  * Fallback static templates when Gemini API is unconfigured.
  */
-function getFallbackAnalysis(title: string, text: string): ClauseAnalysisResult {
-  const t = title.toLowerCase();
-  if (t.includes('indemnity') || t.includes('negligence')) {
-    return {
-      explanation: 'Vulnerability: The indemnification requirements are excessively broad, shielding the counterparty from self-inflicted liabilities. Under common contract reviews, this is flagged as highly unfavorable.',
-      suggestedRedline: 'Each party agrees to indemnify and hold harmless the other party solely from and against direct losses arising from third-party actions caused by the gross negligence or willful misconduct of the indemnifying party.'
-    };
-  }
-  if (t.includes('liability') || t.includes('cap')) {
-    return {
-      explanation: 'Vulnerability: The liability limit is capped at a low nominal amount (e.g. 3-months of fees). This leaves the user with virtually no recourse in the event of major data breaches or complete platform downtime.',
-      suggestedRedline: 'Except for breaches of confidentiality or IP indemnification, each party\'s total aggregate liability under this Agreement shall be capped at the total amount of fees paid or payable in the 12-month period preceding the claim.'
-    };
-  }
+function getFallbackAnalysis(_title: string, text: string): ClauseAnalysisResult {
+  // No inference about the clause can be made from its title or a fixed template.
   return {
-    explanation: 'Vulnerability: Standard legal terminology identified. Recommended review to verify alignment with operational capabilities and compliance standards.',
-    suggestedRedline: text // return original as fallback
+    explanation: 'Automated explanation is unavailable. This clause has not been assessed by the explanation service. Review the original text with qualified counsel; no legal finding or safer wording is provided.',
+    suggestedRedline: text
   };
 }
 
@@ -77,8 +65,8 @@ Do not include markdown tags like \`\`\`json. Return only raw JSON.
     const textResponse = response.data.candidates[0].content.parts[0].text;
     const parsed = JSON.parse(textResponse);
     return {
-      explanation: parsed.explanation || 'No explanation generated',
-      suggestedRedline: parsed.suggestedRedline || clauseText
+      explanation: typeof parsed.explanation === 'string' && parsed.explanation.trim() ? parsed.explanation : getFallbackAnalysis(title, clauseText).explanation,
+      suggestedRedline: typeof parsed.suggestedRedline === 'string' && parsed.suggestedRedline.trim() ? parsed.suggestedRedline : clauseText
     };
   } catch (err) {
     console.error('Gemini API call failed, falling back to static analytics:', err);
@@ -97,7 +85,7 @@ export async function streamChatWithGemini(
 ): Promise<void> {
   if (!GEMINI_API_KEY) {
     // Mock streaming reply
-    const mockReply = `[DEMO MODE // GEMINI_API_KEY NOT SET]\n\nRegarding your inquiry, here is how the agreement addresses it:\nBased on the contract text, the obligations are binding. If you violate these provisions, the counterparty can claim immediate default. I recommend checking our suggested redlines for Section 2.1 to balance these rules.`;
+    const mockReply = '[Explanation service unavailable] No AI contract assessment was performed. Review the original clauses directly or ask qualified counsel. No obligations, default terms or clause references have been inferred.';
     const tokens = mockReply.split(' ');
     for (const token of tokens) {
       await new Promise(r => setTimeout(r, 60));
