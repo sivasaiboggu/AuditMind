@@ -5,6 +5,8 @@ const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
 export interface MLClassification {
   label: 'low' | 'medium' | 'high' | 'critical';
   confidence: number;
+  method?: string;
+  calibrated?: boolean;
 }
 
 /**
@@ -54,10 +56,16 @@ function fallbackClassify(text: string): MLClassification {
 export async function classifyClauseRisk(text: string): Promise<MLClassification> {
   try {
     const response = await axios.post(`${ML_SERVICE_URL}/classify-clause`, { text }, { timeout: 2000 });
-    return {
-      label: response.data.label as any,
-      confidence: response.data.confidence || 0.85
-    };
+    const { label, confidence } = response.data ?? {};
+    if (!['low', 'medium', 'high', 'critical'].includes(label) ||
+        typeof confidence !== 'number' || !Number.isFinite(confidence) ||
+        confidence < 0 || confidence > 1) {
+      throw new Error('Invalid risk classification response');
+    }
+    return { label, confidence,
+      method: typeof response.data.method === 'string' ? response.data.method : 'unspecified',
+      calibrated: false };
+
   } catch (error) {
     // Graceful fallback to rule-based evaluation
     return fallbackClassify(text);
@@ -65,12 +73,16 @@ export async function classifyClauseRisk(text: string): Promise<MLClassification
 }
 
 /**
- * Gets a precise risk score percentage (0-100) for a clause or document.
+ * Gets an uncalibrated review-priority score (0-100), not a risk probability.
  */
 export async function getRiskScore(text: string): Promise<number> {
   try {
     const response = await axios.post(`${ML_SERVICE_URL}/risk-score`, { text }, { timeout: 2000 });
-    return response.data.score;
+    const score = response.data?.score;
+    if (typeof score !== 'number' || !Number.isFinite(score) || score < 0 || score > 100) {
+      throw new Error('Invalid risk score response');
+    }
+    return score;
   } catch (error) {
     // Map class labels to base risk percentages
     const classification = fallbackClassify(text);

@@ -2,12 +2,11 @@ import os
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import torch
-import re
+from risk_rules import compute_local_heuristics, validated_risk_prediction
 
 app = FastAPI(
     title="AuditMind ML Legal-NLP Microservice",
-    description="Fine-tuned transformer inference engine for contract risk analysis",
+    description="Contract review rules with optional explicit-label risk model inference",
     version="1.0.0"
 )
 
@@ -15,72 +14,29 @@ app = FastAPI(
 class ClauseInput(BaseModel):
   text: str
 
-# Model configuration
-MODEL_NAME = os.getenv("MODEL_NAME", "cross-encoder/ms-marco-MiniLM-L-2-v2")
+# No default relevance/base model can establish legal risk. Model inference is
+# opt-in and local-only, and needs a reviewed model with all four risk labels.
+MODEL_NAME = os.getenv("MODEL_NAME", "").strip()
 classifier_pipeline = None
 
 @app.on_event("startup")
 def load_model():
   global classifier_pipeline
-  print(f"// Initializing Deep Learning Model: {MODEL_NAME}")
-  
+  classifier_pipeline = None
+  if os.getenv("ENABLE_RISK_MODEL", "false").lower() != "true" or not MODEL_NAME:
+    return
   try:
-    from transformers import pipeline
-    # Load a lightweight classification/sentence ranking pipeline on CPU
-    # MiniLM-L-2 is extremely small (~15MB) and fast on CPU
-    classifier_pipeline = pipeline(
-        "text-classification",
-        model=MODEL_NAME,
-        device=-1 # force CPU
-    )
-    print("// Transformers deep learning model loaded successfully.")
-  except Exception as e:
-    print(f"// Warning: Could not initialize transformer pipeline locally: {e}")
-    print("// Falling back to local NLP heuristics for classification inference.")
+    from transformers import AutoConfig, AutoTokenizer, AutoModelForSequenceClassification, pipeline
+    config = AutoConfig.from_pretrained(MODEL_NAME, local_files_only=True)
+    labels = set(config.id2label.values())
+    if labels != {"low", "medium", "high", "critical"}:
+      raise ValueError("Model config must declare the four explicit legal-risk labels")
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, local_files_only=True)
+    model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME, local_files_only=True)
+    classifier_pipeline = pipeline("text-classification", model=model, tokenizer=tokenizer, device=-1)
+  except Exception:
+    # Do not leak paths/provider errors. Rule provenance is returned below.
     classifier_pipeline = None
-
-def compute_local_heuristics(text: str):
-  """
-  Python fallback classifier when Hugging Face is loading or fails.
-  """
-  text_lower = text.lower()
-  
-  # Rule metrics
-  critical_patterns = [
-    r"liquidated damages",
-    r"perpetual.*irrevocable",
-    r"negligence.*disclosing",
-    r"indemnify.*negligence"
-  ]
-  
-  high_patterns = [
-    r"indemnify",
-    r"intellectual property",
-    r"sole discretion",
-    r"limitation of liability",
-    r"governing law"
-  ]
-  
-  medium_patterns = [
-    r"automatic.*renew",
-    r"exclusive jurisdiction",
-    r"confidentiality",
-    r"force majeure"
-  ]
-
-  for p in critical_patterns:
-    if re.search(p, text_lower):
-      return "critical", 0.88
-      
-  for p in high_patterns:
-    if re.search(p, text_lower):
-      return "high", 0.79
-      
-  for p in medium_patterns:
-    if re.search(p, text_lower):
-      return "medium", 0.72
-      
-  return "low", 0.62
 
 @app.post("/classify-clause")
 def classify_clause(payload: ClauseInput):
@@ -90,30 +46,19 @@ def classify_clause(payload: ClauseInput):
   # 1. Try deep learning model if loaded
   if classifier_pipeline:
     try:
-      # Crop text to fit max token limit of small transformers
-      cropped_text = payload.text[:512]
-      res = classifier_pipeline(cropped_text)[0]
-      score = res['score']
-      
-      # Map model output labels to risk categories
-      # ms-marco output ranges, we map score limits
-      if score > 0.8:
-        label = "critical"
-      elif score > 0.5:
-        label = "high"
-      elif score > 0.2:
-        label = "medium"
-      else:
-        label = "low"
-        
+      label, score = validated_risk_prediction(
+          classifier_pipeline(payload.text, truncation=True, max_length=512)
+      )
       return {
           "label": label,
-          "confidence": round(float(score), 4),
+          "confidence": score,
           "model": MODEL_NAME,
+          "method": "configured_risk_model",
+          "calibrated": False,
           "device": "cpu"
       }
-    except Exception as e:
-      print(f"// DL Inference failed: {e}. Falling back to rules.")
+    except Exception:
+      pass
 
   # 2. Fallback to Python rules
   label, conf = compute_local_heuristics(payload.text)
@@ -121,6 +66,8 @@ def classify_clause(payload: ClauseInput):
       "label": label,
       "confidence": conf,
       "model": "local_nlp_rules_fallback",
+      "method": "heuristic_review_rules",
+      "calibrated": False,
       "device": "cpu"
   }
 
@@ -146,7 +93,9 @@ def risk_score(payload: ClauseInput):
   final_score = min(100, base + length_mod)
   return {
       "score": final_score,
-      "model": "risk_scoring_matrix_v1"
+      "model": "risk_scoring_matrix_v1",
+      "method": "heuristic_review_rules",
+      "calibrated": False
   }
 
 if __name__ == "__main__":

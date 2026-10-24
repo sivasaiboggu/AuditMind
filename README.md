@@ -1,13 +1,13 @@
 # AuditMind ⚖️
 
-AuditMind is an enterprise-grade, high-performance legal contract compliance and risk assessment platform. By combining hybrid RAG (Retrieval-Augmented Generation), localized Transformer models, and advanced LLM reasoning, AuditMind ingests legal agreements, extracts clauses, classifies risk, and matches compliance standards in real time.
+AuditMind is a contract-review prototype. It extracts clauses, applies review rules and connects retrieval and explanation services. Outputs need human review and are not legal advice. Production readiness, legal accuracy and performance improvements have not been established.
 
 ---
 
 ## 🌟 Key Features
 
-*   **⚡ Real-Time Parallel Pipeline:** Ingests agreements (PDF, DOCX) and parses clauses concurrently, reducing processing latency by 90% (2–4 seconds per document).
-*   **🧠 Localized Hybrid Classification:** Classifies risk levels (Low, Medium, High, Critical) using local BERT-class models with heuristic-based rule fallbacks for offline resilience.
+*   **⚡ Real-Time Parallel Pipeline:** Ingests agreements (PDF, DOCX) and processes clauses concurrently. No controlled latency benchmark is included.
+*   **🧠 Localized Hybrid Classification:** Uses uncalibrated review rules by default. An explicitly enabled, locally available model with named legal-risk labels may be used; a generic relevance score is never mapped to legal risk.
 *   **📊 Interactive Compliance Dashboard:** Displays dynamic risk trends over time and risk allocations directly synchronized with Supabase database events.
 *   **🖋️ AI-Powered Proposal redlines:** Offers detailed clause risk explanations and suggested redlines backed by Gemini model reasoning.
 *   **🔒 Secure In-Memory Queue:** Integrates a background queue powered by Upstash Redis (REST) and in-memory event polling loops for reliable task queue execution.
@@ -142,3 +142,22 @@ file: storage and Postgres are not one transaction. Reconciliation and a durable
 delete state machine remain future work. Health reports configuration, not an
 unperformed database-connectivity check. Provider DB error text is not returned
 to the browser. No production records or storage objects were changed in tests.
+
+### Risk-model safety checkpoint
+
+The previous default MS MARCO relevance model was not a legal-risk classifier. Its
+confidence must not be turned into a risk tier. The service now starts in explicit
+heuristic-review mode, without a model download. `ENABLE_RISK_MODEL=true` and
+`MODEL_NAME` are opt-in settings for an already-local, reviewed classifier declaring
+exactly `low`, `medium`, `high`, `critical` labels. Configuration labels are a
+compatibility guard, not proof of training or accuracy. No fine-tuning or model
+quality is claimed by this change. Model and rule responses expose `method` and
+`calibrated: false`; existing numeric confidence values are uncalibrated scores.
+The API also rejects invalid labels, non-finite/out-of-range scores, and preserves
+a valid zero confidence instead of inventing 0.85.
+
+Run offline model-boundary regressions with:
+`python3 -m unittest discover -s apps/ml-service/tests -v`
+(the six HTTP service tests require FastAPI, uvicorn and httpx; they skip
+explicitly without those packages, while five pure rule tests still run)
+and `npm run test:security`. No external model calls, cloud accounts or migrations.
