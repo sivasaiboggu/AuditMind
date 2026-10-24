@@ -22,7 +22,7 @@ function fallbackClassify(text: string): MLClassification {
     lowercase.includes('perpetual, irrevocable') ||
     lowercase.includes('waives all rights to trial by jury')
   ) {
-    return { label: 'critical', confidence: 0.9 };
+    return { label: 'critical', confidence: 0.9, method: 'api_heuristic_review_rules', calibrated: false };
   }
 
   // Rules for high risk
@@ -33,7 +33,7 @@ function fallbackClassify(text: string): MLClassification {
     lowercase.includes('limitation of liability') ||
     lowercase.includes('material breach')
   ) {
-    return { label: 'high', confidence: 0.8 };
+    return { label: 'high', confidence: 0.8, method: 'api_heuristic_review_rules', calibrated: false };
   }
 
   // Rules for medium risk
@@ -43,11 +43,11 @@ function fallbackClassify(text: string): MLClassification {
     lowercase.includes('governed by the laws') ||
     lowercase.includes('confidentiality')
   ) {
-    return { label: 'medium', confidence: 0.75 };
+    return { label: 'medium', confidence: 0.75, method: 'api_heuristic_review_rules', calibrated: false };
   }
 
   // Fallback for low risk
-  return { label: 'low', confidence: 0.6 };
+  return { label: 'low', confidence: 0.6, method: 'api_heuristic_review_rules', calibrated: false };
 }
 
 /**
@@ -84,7 +84,7 @@ export async function getRiskScore(text: string): Promise<number> {
     }
     return score;
   } catch (error) {
-    // Map class labels to base risk percentages
+    // Map rule labels to uncalibrated review-priority points, not percentages
     const classification = fallbackClassify(text);
     let base = 20;
     if (classification.label === 'critical') base = 85;

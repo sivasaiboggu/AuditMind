@@ -32,68 +32,33 @@ export async function extractText(buffer: Buffer, mimeType: string): Promise<str
  * Scans for section headers like "Section 4.1", "Article II", "10.5 Indemnity", etc.
  */
 export function segmentClauses(text: string): RawSegment[] {
-  const lines = text.split(/\r?\n/);
   const segments: RawSegment[] = [];
-  
-  let currentNum = '';
-  let currentTitle = 'Introduction';
-  let currentBody: string[] = [];
-
-  // Regex patterns for section numbers
-  // Matches "Section 1", "Section 4.2", "Article IV", "1.1", "10.5", "1.", etc.
-  const sectionRegex = /^(?:(?:Section|Article|Clause)\s+([IVXLCDM\d\.]+)|(\d+\.\d+)|(\b[IVXLCDM]+\b))\s*[:-]?\s*(.*)$/i;
-
-  for (let line of lines) {
-    line = line.trim();
+  let number = 'Preamble';
+  let title = 'Introduction';
+  let content: string[] = [];
+  const flush = () => {
+    const body = content.join('\n').trim();
+    if (body) segments.push({number, title, text: body});
+    content = [];
+  };
+  // Require a boundary after the number: "Section 1" must not match "Sectional".
+  // Bare Roman numerals need punctuation, so "I agree" stays ordinary text.
+  const explicit = /^(?:Section|Article|Clause)\s+(\d+(?:\.\d+)*|[IVXLCDM]+)(?=$|[\s:.)-])(?:[.:)\s-]*)(.*)$/i;
+  const numbered = /^(\d+(?:\.\d+)*)(?:[.)]\s+|\s+|$)(.*)$/;
+  const roman = /^([IVXLCDM]+)[.)]\s+(.*)$/;
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
     if (!line) continue;
-
-    const match = line.match(sectionRegex);
+    const match = explicit.exec(line) || numbered.exec(line) || roman.exec(line);
     if (match) {
-      // Save current segment before starting new one
-      if (currentBody.length > 0 || currentNum || currentTitle !== 'Introduction') {
-        segments.push({
-          number: currentNum || 'Preamble',
-          title: currentTitle.trim() || 'General Provision',
-          text: currentBody.join('\n').trim()
-        });
-      }
-
-      // Parse matches
-      const sectionNum = match[1] || match[2] || match[3] || '';
-      const sectionTitle = match[4] || '';
-      
-      currentNum = sectionNum ? `Section ${sectionNum}` : '';
-      currentTitle = sectionTitle || 'Clause';
-      currentBody = [];
-    } else {
-      currentBody.push(line);
+      flush();
+      number = `Section ${match[1]}`;
+      title = match[2]?.trim() || 'Clause';
     }
+    // Keep headers and same-line provisions verbatim in the analyzed text.
+    // Short provisions and header-only sections must never disappear silently.
+    content.push(line);
   }
-
-  // Add the last segment
-  if (currentBody.length > 0 || currentNum) {
-    segments.push({
-      number: currentNum || 'Closing',
-      title: currentTitle.trim() || 'General Provision',
-      text: currentBody.join('\n').trim()
-    });
-  }
-
-  // Fallback if no structured segments were found
-  if (segments.length === 0) {
-    // Split by double newlines (paragraphs)
-    const paragraphs = text.split(/\n\s*\n/);
-    paragraphs.forEach((p, idx) => {
-      const trimmed = p.trim();
-      if (trimmed.length > 30) {
-        segments.push({
-          number: `Clause ${idx + 1}`,
-          title: trimmed.split(/[.:\n]/)[0].substring(0, 40) || 'Provision',
-          text: trimmed
-        });
-      }
-    });
-  }
-
-  return segments.filter(s => s.text.length > 10);
+  flush();
+  return segments;
 }

@@ -36,3 +36,14 @@ test('risk score accepts zero but rejects malformed and out-of-range responses',
     }
   } finally {axios.post=original;}
 });
+
+test('offline rule classification always identifies its method and calibration limit',async()=>{
+  const original=axios.post;
+  try{
+    axios.post=async()=>{throw new Error('synthetic offline');};
+    for(const text of ['ordinary clause','confidentiality','indemnify','perpetual, irrevocable']){
+      const result=await classifyClauseRisk(text);
+      assert.equal(result.method,'api_heuristic_review_rules');assert.equal(result.calibrated,false);
+    }
+  }finally{axios.post=original;}
+});

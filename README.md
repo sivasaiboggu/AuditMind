@@ -230,3 +230,14 @@ scanning their binary object strings and presenting those fragments as document
 text. Empty/scanned PDFs require readable text or prior OCR; OCR is not included.
 Five offline parsing/upload regressions cover these cases. Valid real-world PDF
 and DOCX fidelity still needs representative document testing.
+
+
+### Clause text preservation
+
+Segmentation keeps the original heading and same-line text inside each analyzed
+clause. Short provisions and header-only sections are no longer silently filtered
+out. Numbered single-level headings are supported, while ordinary "I agree" and
+prefix-lookalike lines are not treated as Roman headings. Five synthetic tests
+cover these cases. This is a heuristic segmenter, not a guarantee of legal-document
+structure fidelity. The API's offline classification rules now also identify their
+method and explicitly mark confidence as uncalibrated.
