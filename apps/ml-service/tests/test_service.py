@@ -2,7 +2,7 @@ import os
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 try:
     from fastapi.testclient import TestClient
@@ -21,6 +21,16 @@ class ServiceTests(unittest.TestCase):
         with patch.dict(os.environ, {'ENABLE_RISK_MODEL':'false'}), patch.dict(sys.modules, {'transformers':None}):
             main.load_model()
             self.assertIsNone(main.classifier_pipeline)
+
+    def test_incomplete_risk_head_cannot_activate(self):
+        fake=Mock()
+        fake.AutoConfig.from_pretrained.return_value.id2label={0:'low',1:'medium',2:'high',3:'critical'}
+        fake.AutoModelForSequenceClassification.from_pretrained.return_value=(Mock(),{'missing_keys':['classifier.weight']})
+        with patch.dict(os.environ,{'ENABLE_RISK_MODEL':'true'}), patch.object(main,'MODEL_NAME','synthetic-local'), patch.dict(sys.modules,{'transformers':fake}):
+            main.load_model()
+            self.assertIsNone(main.classifier_pipeline)
+            fake.pipeline.assert_not_called()
+            fake.AutoModelForSequenceClassification.from_pretrained.assert_called_once_with('synthetic-local',local_files_only=True,output_loading_info=True)
 
     def test_empty_clause_rejected(self):
         for route in ['/classify-clause','/risk-score']:
