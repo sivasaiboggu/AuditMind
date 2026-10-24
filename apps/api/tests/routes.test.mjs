@@ -4,7 +4,7 @@ import WebSocket from 'ws';
 import { once } from 'node:events';
 import { buildApp } from '../dist/app.js';
 
-function isolatedStore({storageFails = false, metadataFailsOnce = false, processing = false, missingPath = false, ownershipReadFails = false, insertFails = false, insertUnknown = false} = {}) {
+function isolatedStore({storageFails = false, metadataFailsOnce = false, processing = false, missingPath = false, ownershipReadFails = false, insertFails = false, insertUnknown = false, clauseReadFails = false} = {}) {
   const rows = [
     { id: 'contract-a', user_id: 'user-a', name: 'Synthetic A', file_path: 'a.txt', status: 'completed' },
     { id: 'contract-b', user_id: 'user-b', name: 'Synthetic B', file_path: 'b.txt', status: 'completed' },
@@ -35,6 +35,7 @@ function isolatedStore({storageFails = false, metadataFailsOnce = false, process
             if(metadataFailsOnce && deleteAttempts===1) return Promise.resolve({data:null,error:new Error('private-db-error')}).then(resolve,reject);
             effects.deleted.push(...data.map(r=>r.id));
           }
+          if(table==='clauses' && clauseReadFails) return Promise.resolve({data:null,error:new Error('private-context-error')}).then(resolve,reject);
           if(table==='clauses') data=[{id:'clause',contract_id:filters.contract_id,text:'Synthetic contract text'}];
           return Promise.resolve({data,error:null}).then(resolve,reject);
         }
@@ -226,4 +227,31 @@ test('unsupported upload types are rejected before storage or metadata writes',a
     const response=await app.inject(request);
     assert.equal(response.statusCode,415);assert.deepEqual(effects.uploaded,[]);assert.deepEqual(effects.queued,[]);
   }finally{await app.close();}
+});
+
+
+for(const [label,options,messages] of [
+ ['invalid roles',{},[{role:'system',content:'synthetic'}]],
+ ['oversized content',{},[{role:'user',content:'x'.repeat(8001)}]],
+ ['context failure',{clauseReadFails:true},[{role:'user',content:'Explain this clause'}]],
+ ['processing contract',{processing:true},[{role:'user',content:'Explain this clause'}]]
+])test(`chat refuses ${label} before provider dispatch`,async()=>{
+  const {app,effects}=await fixture(options);let ws;
+  try{
+    await app.listen({port:0,host:'127.0.0.1'});
+    ws=new WebSocket(`ws://127.0.0.1:${app.server.address().port}/ws`);await once(ws,'open');
+    const reply=once(ws,'message');
+    ws.send(JSON.stringify({type:'chat',accessToken:'user-a',contractId:'contract-a',messages}));
+    const [raw]=await reply;assert.equal(JSON.parse(raw.toString()).type,'error');assert.equal(effects.chats,0);
+    assert.doesNotMatch(raw.toString(),/private-context-error/);
+  }finally{ws?.terminate();await app.close();}
+});
+
+test('completed owner chat with bounded history reaches provider once',async()=>{
+  const {app,effects}=await fixture();let ws;
+  try{
+    await app.listen({port:0,host:'127.0.0.1'});ws=new WebSocket(`ws://127.0.0.1:${app.server.address().port}/ws`);await once(ws,'open');
+    const reply=once(ws,'message');ws.send(JSON.stringify({type:'chat',accessToken:'user-a',contractId:'contract-a',messages:[{role:'user',content:'Explain this clause'}]}));
+    const [raw]=await reply;assert.equal(JSON.parse(raw.toString()).type,'chat_end');assert.equal(effects.chats,1);
+  }finally{ws?.terminate();await app.close();}
 });

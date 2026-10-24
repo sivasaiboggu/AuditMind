@@ -280,8 +280,9 @@ app.route({
         const payload = JSON.parse(message);
 
         // Tokens travel inside frames, never in URLs or access logs.
-        const userId = await verifiedUserId(supabase, payload.accessToken);
-        if (!userId || !await ownedContract(supabase, payload.contractId, userId)) {
+        const userId = await verifiedUserId(supabase, payload?.accessToken);
+        const contract = userId ? await ownedContract(supabase, payload?.contractId, userId) : null;
+        if (!contract) {
           conn.socket.send(JSON.stringify({ type: 'error', message: 'Authentication or contract access denied.' }));
           conn.socket.close(1008, 'Access denied');
           return;
@@ -332,6 +333,13 @@ app.route({
 
         else if (payload.type === 'chat') {
           const { contractId, messages } = payload;
+          if (contract.status !== 'completed') throw new Error('Contract analysis is not complete.');
+          if (!Array.isArray(messages) || messages.length === 0 || messages.length > 40 ||
+              messages.some(item => !item || !['user', 'model'].includes(item.role) ||
+                typeof item.content !== 'string' || !item.content.trim() || item.content.length > 8000) ||
+              messages.reduce((total, item) => total + item.content.length, 0) > 32000) {
+            throw new Error('Invalid chat history.');
+          }
           console.log(`// WS: Received chat request for contract ${contractId}`);
 
           // 1. Retrieve contract context (clauses)
@@ -339,7 +347,8 @@ app.route({
           if (!supabase) {
             throw new Error('Supabase database client is not configured.');
           }
-          const { data } = await supabase.from('clauses').select('number, title, text').eq('contract_id', contractId);
+          const { data, error: contextError } = await supabase.from('clauses').select('number, title, text').eq('contract_id', contractId);
+          if (contextError || !data?.length) throw new Error('Contract context is unavailable.');
           if (data) {
             clausesText = data.map(c => `${c.number} (${c.title}): ${c.text}`).join('\n\n');
           }

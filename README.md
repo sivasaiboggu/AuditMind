@@ -241,3 +241,13 @@ prefix-lookalike lines are not treated as Roman headings. Five synthetic tests
 cover these cases. This is a heuristic segmenter, not a guarantee of legal-document
 structure fidelity. The API's offline classification rules now also identify their
 method and explicitly mark confidence as uncalibrated.
+
+
+### Chat context boundary
+
+Chat requires a completed owned contract and a successful nonempty clause read.
+A failed context query no longer falls through to an ungrounded provider call.
+History is bounded to40 user/model messages,8,000 characters per message and
+32,000 total characters. Five synthetic WebSocket regressions cover blocked and
+admitted paths. This does not validate model answers or supply a full rate limit,
+prompt-injection defense or legal review.
