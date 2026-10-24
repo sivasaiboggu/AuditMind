@@ -10,7 +10,7 @@ AuditMind is a contract-review prototype. It extracts clauses, applies review ru
 *   **🧠 Localized Hybrid Classification:** Uses uncalibrated review rules by default. An explicitly enabled, locally available model with named legal-risk labels may be used; a generic relevance score is never mapped to legal risk.
 *   **📊 Interactive Compliance Dashboard:** Displays dynamic risk trends over time and risk allocations directly synchronized with Supabase database events.
 *   **🖋️ AI-Powered Proposal redlines:** Offers detailed clause risk explanations and suggested redlines backed by Gemini model reasoning.
-*   **🔒 Secure In-Memory Queue:** Integrates a background queue powered by Upstash Redis (REST) and in-memory event polling loops for reliable task queue execution.
+*   **🔒 Background Processing:** Uses optional Upstash Redis REST or an in-memory queue. Crash recovery, durable acknowledgement and exactly-once execution are not implemented.
 
 ---
 
@@ -186,3 +186,15 @@ Ambiguous queue acceptance similarly returns `QUEUE_ACCEPTANCE_UNKNOWN`, retains
 the file/record, and does not automatically dispatch a duplicate. Operators must
 inspect the recovery ID before retrying. No automatic reconciliation, durable
 outbox, exactly-once queue guarantee or production validation is claimed.
+
+
+### Incomplete analysis is not low risk
+
+A clause-service exception no longer creates a low-risk clause with score zero.
+The run fails before clause insertion, and empty extraction or a missing storage
+client cannot report completion. Failure progress messages do not expose raw
+provider errors. Six synthetic worker tests cover these paths and successful
+persistence. This is not proof of legal accuracy: heuristic/static fallbacks
+inside individual providers still need separate review. The worker currently
+removes a Redis job before processing and has no durable acknowledgement/retry
+protocol. Crashes and partial database writes still require reconciliation.

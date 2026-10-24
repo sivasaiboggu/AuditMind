@@ -136,29 +136,42 @@ async function startQueueWorker() {
 /**
  * Ingestion Processing pipeline
  */
-async function processContract(
+export async function processContract(
   contractId: string,
   filePath: string,
   mimeType: string,
-  buffer: Buffer
+  buffer: Buffer,
+  deps = {
+    store: supabase,
+    extract: extractText,
+    segment: segmentClauses,
+    validate: validateContractWithGemini,
+    classify: classifyClauseRisk,
+    score: getRiskScore,
+    retrieve: retrieveRegulations,
+    analyze: analyzeClauseWithGemini,
+    progress: updateProgress
+  }
 ) {
   console.log(`// [Queue] Processing Contract ID: ${contractId}`);
   
   try {
+    if (!deps.store) throw new Error('Contract storage is not configured.');
     // 1. Text Extraction
-    updateProgress(contractId, 'extracting', 15, 'Extracting text from document body...');
-    const rawText = await extractText(buffer, mimeType);
+    deps.progress(contractId, 'extracting', 15, 'Extracting text from document body...');
+    const rawText = await deps.extract(buffer, mimeType);
     
     // Validate legal contract type
-    updateProgress(contractId, 'extracting', 25, 'Validating document type...');
-    const validation = await validateContractWithGemini(rawText);
+    deps.progress(contractId, 'extracting', 25, 'Validating document type...');
+    const validation = await deps.validate(rawText);
     if (!validation.isContract) {
       throw new Error(validation.message);
     }
     
     // 2. Clause Segmentation
-    updateProgress(contractId, 'segmenting', 35, 'Segmenting legal clauses...');
-    const rawClauses = segmentClauses(rawText);
+    deps.progress(contractId, 'segmenting', 35, 'Segmenting legal clauses...');
+    const rawClauses = deps.segment(rawText);
+    if (rawClauses.length === 0) throw new Error('No clauses could be extracted for review.');
 
     // 3. Risk Classification & RAG & Gemini Summaries
     let completedClauses = 0;
@@ -167,18 +180,18 @@ async function processContract(
         try {
           // Run risk classification, scoring, and RAG retrieval in parallel
           const [classification, score, regContext] = await Promise.all([
-            classifyClauseRisk(item.text),
-            getRiskScore(item.text),
-            retrieveRegulations(item.text)
+            deps.classify(item.text),
+            deps.score(item.text),
+            deps.retrieve(item.text)
           ]);
           const label = classification.label;
 
           // Call Gemini for redlines
-          const analysis = await analyzeClauseWithGemini(item.title, item.text, regContext);
+          const analysis = await deps.analyze(item.title, item.text, regContext);
 
           completedClauses++;
           const percentage = 35 + Math.floor((completedClauses / rawClauses.length) * 50);
-          updateProgress(
+          deps.progress(
             contractId,
             'classifying',
             percentage,
@@ -197,17 +210,9 @@ async function processContract(
           };
         } catch (err) {
           console.error(`// Error processing clause "${item.title}":`, err);
-          completedClauses++;
-          return {
-            contract_id: contractId,
-            number: item.number,
-            title: item.title,
-            text: item.text,
-            risk_level: 'low',
-            risk_explanation: 'Failed to analyze this clause automatically.',
-            suggested_redline: '',
-            risk_score: 0
-          };
+          // A service failure is not a finding of low legal risk. Reject the
+          // contract run instead of saving a fabricated zero-risk clause.
+          throw new Error('Clause analysis was incomplete.');
         }
       })
     );
@@ -220,15 +225,15 @@ async function processContract(
     const overallScore = rawClauses.length > 0 ? Math.round(riskSum / rawClauses.length) : 0;
 
     // 4. Update Database
-    updateProgress(contractId, 'generating', 90, 'Syncing details to secure storage vaults...');
+    deps.progress(contractId, 'generating', 90, 'Syncing details to secure storage vaults...');
     
-    if (supabase) {
+    if (deps.store) {
       // Save clauses
-      const { error: cError } = await supabase.from('clauses').insert(clausesToSave);
+      const { error: cError } = await deps.store.from('clauses').insert(clausesToSave);
       if (cError) throw cError;
 
       // Update contract status
-      const { error: sError } = await supabase
+      const { error: sError } = await deps.store
         .from('contracts')
         .update({
           status: 'completed',
@@ -236,19 +241,17 @@ async function processContract(
         })
         .eq('id', contractId);
       if (sError) throw sError;
-    } else {
-      console.log('// Supabase disconnected. Seed updates mocked locally.');
     }
 
     // 5. Complete
-    updateProgress(contractId, 'completed', 100, 'Compliance inspection fully generated.');
+    deps.progress(contractId, 'completed', 100, 'Compliance inspection fully generated.');
     console.log(`// [Queue] Completed processing contract ${contractId} successfully.`);
   } catch (error) {
     console.error(`// [Queue] Processing failed for contract ${contractId}:`, error);
-    updateProgress(contractId, 'failed', 0, (error as Error).message);
+    deps.progress(contractId, 'failed', 0, 'Contract analysis did not finish. Review is required before relying on any results.');
     
-    if (supabase) {
-      await supabase.from('contracts').update({ status: 'failed' }).eq('id', contractId);
+    if (deps.store) {
+      await deps.store.from('contracts').update({ status: 'failed' }).eq('id', contractId);
     }
   }
 }
