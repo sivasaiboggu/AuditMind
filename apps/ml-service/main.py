@@ -32,7 +32,11 @@ def load_model():
     if labels != {"low", "medium", "high", "critical"}:
       raise ValueError("Model config must declare the four explicit legal-risk labels")
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, local_files_only=True)
-    model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME, local_files_only=True)
+    model, loading = AutoModelForSequenceClassification.from_pretrained(
+        MODEL_NAME, local_files_only=True, output_loading_info=True
+    )
+    if loading.get("missing_keys") or loading.get("mismatched_keys"):
+      raise ValueError("Incomplete risk-model weights")
     classifier_pipeline = pipeline("text-classification", model=model, tokenizer=tokenizer, device=-1)
   except Exception:
     # Do not leak paths/provider errors. Rule provenance is returned below.
