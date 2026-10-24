@@ -219,3 +219,14 @@ Retrieved excerpts disclose that currency and applicability are unverified. Six
 offline regressions cover this boundary; no live corpus or legal validation is
 claimed. Corpus curation, citations, jurisdiction and source freshness remain
 required before anyone relies on regulatory output.
+
+
+### Document parsing boundary
+
+Uploads accept PDF, DOCX and UTF-8 plain text. Legacy binary DOC was previously
+passed to the DOCX-only extractor and is now explicitly rejected with other
+unsupported types before storage. Corrupted PDFs fail extraction instead of
+scanning their binary object strings and presenting those fragments as document
+text. Empty/scanned PDFs require readable text or prior OCR; OCR is not included.
+Five offline parsing/upload regressions cover these cases. Valid real-world PDF
+and DOCX fidelity still needs representative document testing.

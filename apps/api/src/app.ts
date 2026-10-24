@@ -82,9 +82,13 @@ app.post('/contracts/upload', async (req, reply) => {
   const userId = req.authenticatedUserId!;
 
   const contractId = randomUUID();
-  const buffer = await data.toBuffer();
-  const fileName = data.filename.split(/[\\/]/).pop()!.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-120) || 'contract';
   const mimeType = data.mimetype;
+  if (!['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'].includes(mimeType)) {
+    return reply.code(415).send({error:'Unsupported document type. Use PDF, DOCX or plain text.'});
+  }
+  const buffer = await data.toBuffer();
+  if (buffer.length === 0) return reply.code(400).send({error:'The uploaded file is empty.'});
+  const fileName = data.filename.split(/[\\/]/).pop()!.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-120) || 'contract';
 
   console.log(`// Ingesting contract: ${fileName} (${mimeType})`);
 

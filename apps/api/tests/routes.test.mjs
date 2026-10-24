@@ -218,3 +218,12 @@ test('ambiguous insert response retains the file instead of destructive compensa
     assert.ok(response.json().contractId);assert.deepEqual(effects.removed,[]);assert.deepEqual(effects.queued,[]);
   }finally{await app.close();}
 });
+
+test('unsupported upload types are rejected before storage or metadata writes',async()=>{
+  const {app,effects}=await fixture();
+  try{
+    const request=uploadRequest();request.payload=Buffer.from(request.payload.toString().replace('Content-Type: text/plain','Content-Type: application/msword'));
+    const response=await app.inject(request);
+    assert.equal(response.statusCode,415);assert.deepEqual(effects.uploaded,[]);assert.deepEqual(effects.queued,[]);
+  }finally{await app.close();}
+});

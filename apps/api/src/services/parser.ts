@@ -7,52 +7,24 @@ export interface RawSegment {
   text: string;
 }
 
-/**
- * Robust binary string extraction fallback for corrupted or non-standard PDF XRef tables.
- */
-function extractStringsFromPdfBinary(buffer: Buffer): string {
-  const binaryString = buffer.toString('binary');
-  // Match parenthesized text strings (e.g. "(Hello World)")
-  const matches = binaryString.match(/\(([^)]+)\)/g);
-  if (!matches || matches.length < 10) {
-    // Fallback: return printable ASCII/UTF-8 strings
-    return buffer.toString('utf-8').replace(/[^\x20-\x7E\n\r\t]/g, ' ');
-  }
-
-  const textSegments = matches
-    .map(m => {
-      let content = m.slice(1, -1);
-      // Clean PDF backslash-escaped characters (e.g. \), \(, etc.)
-      content = content.replace(/\\(.)/g, '$1');
-      return content;
-    })
-    .filter(c => c.trim().length > 2 && !/^[0-9\/\.\s\-]+$/.test(c));
-
-  return textSegments.join(' ');
-}
-
-/**
- * Extracts text from file buffer based on MIME type.
- */
+/** Extract supported formats only. Never treat arbitrary binary as contract text. */
 export async function extractText(buffer: Buffer, mimeType: string): Promise<string> {
+  let text: string;
   if (mimeType === 'application/pdf') {
-    try {
-      const data = await pdf(buffer);
-      return data.text;
-    } catch (err: any) {
-      console.warn('// pdf-parse failed with XRef/corrupted structure error. Running binary recovery fallback...', err.message || err);
-      return extractStringsFromPdfBinary(buffer);
-    }
-  } else if (
-    mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-    mimeType === 'application/msword'
-  ) {
-    const data = await mammoth.extractRawText({ buffer });
-    return data.value;
+    try { text = (await pdf(buffer)).text; }
+    catch { throw new Error('PDF text could not be extracted. Upload a readable PDF, DOCX or plain-text file.'); }
+  } else if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+    try { text = (await mammoth.extractRawText({buffer})).value; }
+    catch { throw new Error('DOCX text could not be extracted. Upload a readable document.'); }
+  } else if (mimeType === 'text/plain') {
+    try { text = new TextDecoder('utf-8', {fatal:true}).decode(buffer); }
+    catch { throw new Error('Plain-text documents must contain valid UTF-8 text.'); }
+    if (/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text)) throw new Error('The uploaded file contains binary control characters.');
   } else {
-    // Treat as plain text
-    return buffer.toString('utf-8');
+    throw new Error('Unsupported document type. Use PDF, DOCX or plain text.');
   }
+  if (!text.trim()) throw new Error('No readable text was found. Scanned images need OCR before upload.');
+  return text;
 }
 
 /**
