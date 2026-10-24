@@ -55,8 +55,13 @@ ML_SERVICE_URL=http://localhost:8000
 ```
 
 ### 3. Setup Database Schema
-Execute the SQL migration scripts in your **Supabase SQL Editor**:
-1. Copy the contents of [`supabase/migrations/20240101000000_init.sql`](supabase/migrations/20240101000000_init.sql).
+**Warning: the initial schema script contains `DROP TABLE` statements. Use it only
+in a new disposable Supabase project, never against existing data. Review every
+later migration separately. Back up existing projects and design a non-destructive
+migration before making changes.** No production migration has been run.
+
+For a new disposable project only:
+1. Review the contents of [`supabase/migrations/20240101000000_init.sql`](supabase/migrations/20240101000000_init.sql).
 2. Run them in your Supabase project to build the `contracts`, `clauses`, and RLS policy configurations.
 
 ---
@@ -161,3 +166,23 @@ Run offline model-boundary regressions with:
 (the six HTTP service tests require FastAPI, uvicorn and httpx; they skip
 explicitly without those packages, while five pure rule tests still run)
 and `npm run test:security`. No external model calls, cloud accounts or migrations.
+
+
+### Upload and deletion recovery checkpoint
+
+Deletion now blocks processing contracts and missing stored paths, avoiding a
+race with the active pipeline or a metadata-only deletion. If Storage succeeds
+but metadata deletion fails, the API returns `METADATA_CLEANUP_PENDING` with an
+explicit retry message. This is not a distributed transaction or a durable
+cleanup queue. Already-absent-object retry behavior remains to be verified with
+real isolated Supabase Storage; the route tests use a synthetic store.
+
+When upload metadata receives a definite PostgreSQL statement rejection (SQLSTATE
+classes 22, 23 or 42), the API attempts cleanup of only its newly generated
+object path. It reports `UPLOAD_ROLLED_BACK` or `UPLOAD_CLEANUP_PENDING`, with a
+recovery contract ID. Ambiguous insert errors retain the file and report
+`UPLOAD_ACCEPTANCE_UNKNOWN`: a network error does not prove an insert failed.
+Ambiguous queue acceptance similarly returns `QUEUE_ACCEPTANCE_UNKNOWN`, retains
+the file/record, and does not automatically dispatch a duplicate. Operators must
+inspect the recovery ID before retrying. No automatic reconciliation, durable
+outbox, exactly-once queue guarantee or production validation is claimed.

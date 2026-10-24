@@ -4,27 +4,37 @@ import WebSocket from 'ws';
 import { once } from 'node:events';
 import { buildApp } from '../dist/app.js';
 
-function isolatedStore({storageFails = false} = {}) {
+function isolatedStore({storageFails = false, metadataFailsOnce = false, processing = false, missingPath = false, ownershipReadFails = false, insertFails = false, insertUnknown = false} = {}) {
   const rows = [
     { id: 'contract-a', user_id: 'user-a', name: 'Synthetic A', file_path: 'a.txt', status: 'completed' },
     { id: 'contract-b', user_id: 'user-b', name: 'Synthetic B', file_path: 'b.txt', status: 'completed' },
   ];
-  const effects = { removed: [], deleted: [], queued: [], chats: 0 };
+  if(processing) rows[0].status='processing';
+  if(missingPath) rows[0].file_path=null;
+  let deleteAttempts=0;
+  const effects = { removed: [], deleted: [], queued: [], uploaded: [], chats: 0 };
   const store = {
     auth: { async getUser(token) {
       return { data: { user: ['user-a','user-b'].includes(token) ? { id: token } : null }, error: null };
     } },
-    storage: { from() { return { async remove(paths) { effects.removed.push(...paths); return { error: storageFails ? new Error('private-storage-detail') : null }; } }; } },
+    storage: { from() { return { async upload(path) {effects.uploaded.push(path);return {error:null};}, async remove(paths) { effects.removed.push(...paths); return { error: storageFails ? new Error('private-storage-detail') : null }; } }; } },
     from(table) {
       const filters = {}; let deleting = false;
+      let inserting=false;
       const query = {
+        insert() {inserting=true;return this;},
         select() { return this; }, eq(k,v) { filters[k]=v; return this; },
         delete() { deleting=true; return this; }, order() { return this; },
-        async maybeSingle() { return { data: rows.find(r=>Object.entries(filters).every(([k,v])=>r[k]===v)) || null, error:null }; },
+        async maybeSingle() { if(ownershipReadFails) return {data:null,error:new Error('private-query-error')}; return { data: rows.find(r=>Object.entries(filters).every(([k,v])=>r[k]===v)) || null, error:null }; },
         single() { return this.maybeSingle(); },
         then(resolve,reject) {
+          if(inserting) return Promise.resolve({data:null,error:insertFails?Object.assign(new Error('private-insert-error'),{code:insertUnknown?'FETCH_ERROR':'23514'}):null}).then(resolve,reject);
           let data = table === 'contracts' ? rows.filter(r=>Object.entries(filters).every(([k,v])=>r[k]===v)) : [];
-          if(deleting) effects.deleted.push(...data.map(r=>r.id));
+          if(deleting) {
+            deleteAttempts++;
+            if(metadataFailsOnce && deleteAttempts===1) return Promise.resolve({data:null,error:new Error('private-db-error')}).then(resolve,reject);
+            effects.deleted.push(...data.map(r=>r.id));
+          }
           if(table==='clauses') data=[{id:'clause',contract_id:filters.contract_id,text:'Synthetic contract text'}];
           return Promise.resolve({data,error:null}).then(resolve,reject);
         }
@@ -35,7 +45,7 @@ function isolatedStore({storageFails = false} = {}) {
 }
 async function fixture(options) {
   const {store,effects}=isolatedStore(options);
-  const app=await buildApp({store,initialize:async()=>{},enqueue:async(...args)=>effects.queued.push(args),streamChat:async()=>{effects.chats++;}});
+  const app=await buildApp({store,initialize:async()=>{},enqueue:async(...args)=>{effects.queued.push(args);if(options?.queueFails)throw new Error('private-queue-error');},streamChat:async()=>{effects.chats++;}});
   return {app,effects};
 }
 const headers=user=>({authorization:`Bearer ${user}`});
@@ -130,4 +140,81 @@ test('health reports configured state without pretending it probed connectivity'
   const {app}=await fixture();
   try {assert.match((await app.inject({url:'/health'})).json().database,/not checked/);}
   finally {await app.close();}
+});
+
+
+test('deleting a processing contract is blocked before touching storage',async()=>{
+  const {app,effects}=await fixture({processing:true});
+  try {
+    const response=await app.inject({method:'DELETE',url:'/contracts/contract-a',headers:headers('user-a')});
+    assert.equal(response.statusCode,409);assert.deepEqual(effects.removed,[]);assert.deepEqual(effects.deleted,[]);
+  }finally{await app.close();}
+});
+
+test('missing path or failed ownership read cannot cause metadata-only deletion',async()=>{
+  for(const option of [{missingPath:true},{ownershipReadFails:true}]){
+    const {app,effects}=await fixture(option);
+    try{
+      const response=await app.inject({method:'DELETE',url:'/contracts/contract-a',headers:headers('user-a')});
+      assert.ok([404,409].includes(response.statusCode));assert.deepEqual(effects.removed,[]);assert.deepEqual(effects.deleted,[]);
+      assert.doesNotMatch(response.body,/private-query-error/);
+    }finally{await app.close();}
+  }
+});
+
+test('metadata failure after storage removal is explicit and deletion can be retried',async()=>{
+  const {app,effects}=await fixture({metadataFailsOnce:true});
+  try{
+    const first=await app.inject({method:'DELETE',url:'/contracts/contract-a',headers:headers('user-a')});
+    assert.equal(first.statusCode,500);assert.equal(first.json().code,'METADATA_CLEANUP_PENDING');
+    assert.deepEqual(effects.deleted,[]);assert.doesNotMatch(first.body,/private-db-error/);
+    const retry=await app.inject({method:'DELETE',url:'/contracts/contract-a',headers:headers('user-a')});
+    assert.equal(retry.statusCode,200);assert.deepEqual(effects.deleted,['contract-a']);
+    assert.deepEqual(effects.removed,['a.txt','a.txt']);
+  }finally{await app.close();}
+});
+
+
+function multipartContract(){
+  return Buffer.from('--boundary\r\nContent-Disposition: form-data; name="file"; filename="synthetic.txt"\r\nContent-Type: text/plain\r\n\r\nSynthetic contract only\r\n--boundary--\r\n');
+}
+const uploadRequest=()=>({method:'POST',url:'/contracts/upload',headers:{...headers('user-a'),'content-type':'multipart/form-data; boundary=boundary'},payload:multipartContract()});
+
+test('metadata insert failure compensates only the new object and never queues',async()=>{
+  const {app,effects}=await fixture({insertFails:true});
+  try{
+    const response=await app.inject(uploadRequest());
+    assert.equal(response.statusCode,500);assert.equal(response.json().code,'UPLOAD_ROLLED_BACK');
+    assert.deepEqual(effects.removed,effects.uploaded);assert.equal(effects.uploaded.length,1);assert.deepEqual(effects.queued,[]);
+    assert.doesNotMatch(response.body,/private-insert-error/);
+  }finally{await app.close();}
+});
+
+test('failed compensation reports pending cleanup instead of pretending rollback',async()=>{
+  const {app,effects}=await fixture({insertFails:true,storageFails:true});
+  try{
+    const response=await app.inject(uploadRequest());
+    assert.equal(response.statusCode,500);assert.equal(response.json().code,'UPLOAD_CLEANUP_PENDING');
+    assert.ok(response.json().contractId);assert.deepEqual(effects.queued,[]);
+  }finally{await app.close();}
+});
+
+test('ambiguous queue failure retains recovery ID and does not delete or retry',async()=>{
+  const {app,effects}=await fixture({queueFails:true});
+  try{
+    const response=await app.inject(uploadRequest());
+    assert.equal(response.statusCode,503);assert.equal(response.json().code,'QUEUE_ACCEPTANCE_UNKNOWN');
+    assert.ok(response.json().contractId);assert.equal(effects.queued.length,1);assert.deepEqual(effects.removed,[]);
+    assert.doesNotMatch(response.body,/private-queue-error/);
+  }finally{await app.close();}
+});
+
+
+test('ambiguous insert response retains the file instead of destructive compensation',async()=>{
+  const {app,effects}=await fixture({insertFails:true,insertUnknown:true});
+  try{
+    const response=await app.inject(uploadRequest());
+    assert.equal(response.statusCode,503);assert.equal(response.json().code,'UPLOAD_ACCEPTANCE_UNKNOWN');
+    assert.ok(response.json().contractId);assert.deepEqual(effects.removed,[]);assert.deepEqual(effects.queued,[]);
+  }finally{await app.close();}
 });

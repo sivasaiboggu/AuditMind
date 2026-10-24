@@ -128,12 +128,40 @@ app.post('/contracts/upload', async (req, reply) => {
     });
 
   if (dbError) {
-    console.error('Supabase DB error:', dbError);
-    return reply.status(500).send({ error: 'Failed to record metadata' });
+    // Only compensate a definite statement rejection. A lost response or
+    // timeout may follow a committed insert; deleting its file would corrupt it.
+    const rejected = typeof dbError.code === 'string' && /^(22|23|42)[0-9A-Z]{3}$/.test(dbError.code);
+    if (!rejected) return reply.status(503).send({
+      error: 'Metadata creation could not be confirmed. File retained for operator review before retrying.',
+      code: 'UPLOAD_ACCEPTANCE_UNKNOWN', contractId
+    });
+    // Compensate only this request's newly generated object path. Never leave
+    // an unreported orphan when metadata creation fails.
+    let cleanupFailed = false;
+    try {
+      const cleanup = await supabase.storage.from('contracts').remove([filePath]);
+      cleanupFailed = Boolean(cleanup.error);
+    } catch { cleanupFailed = true; }
+    return reply.status(500).send({
+      error: cleanupFailed
+        ? 'Metadata creation failed and file cleanup needs operator review.'
+        : 'Metadata creation failed. The newly uploaded file was removed.',
+      code: cleanupFailed ? 'UPLOAD_CLEANUP_PENDING' : 'UPLOAD_ROLLED_BACK',
+      contractId
+    });
   }
 
   // Trigger Async Pipeline Job
-  await enqueue(contractId, filePath, mimeType, buffer);
+  try {
+    await enqueue(contractId, filePath, mimeType, buffer);
+  } catch {
+    // Queue acceptance may be ambiguous. Keep the owned record/file for
+    // reconciliation, do not enqueue again or claim processing succeeded.
+    return reply.status(503).send({
+      error: 'Queue acceptance could not be confirmed. Check this contract before uploading again.',
+      code: 'QUEUE_ACCEPTANCE_UNKNOWN', contractId
+    });
+  }
 
   return reply.status(201).send(newContract);
 });
@@ -176,22 +204,19 @@ app.delete('/contracts/:id', async (req, reply) => {
     return reply.status(500).send({ error: 'Supabase database client is not configured.' });
   }
 
-  if (!await ownedContract(supabase, id, req.authenticatedUserId)) {
-    return reply.code(404).send({ error: 'Contract not found.' });
+  const contract = await ownedContract(supabase, id, req.authenticatedUserId);
+  if (!contract) return reply.code(404).send({ error: 'Contract not found.' });
+  // A running pipeline may still write clauses. Never race deletion against it.
+  if (contract.status === 'processing') {
+    return reply.code(409).send({ error: 'This contract is still processing. Wait for it to finish before deleting.' });
   }
-
-  // 1. Fetch file path to delete from Storage
-  const { data: contract } = await supabase
-    .from('contracts')
-    .select('file_path')
-    .eq('user_id', req.authenticatedUserId!)
-    .eq('id', id)
-    .single();
-
-  if (contract?.file_path) {
-    const { error: storageError } = await supabase.storage.from('contracts').remove([contract.file_path]);
-    if (storageError) return reply.status(500).send({ error: 'Could not remove the stored contract. The database record was kept for retry.' });
+  if (typeof contract.file_path !== 'string' || !contract.file_path.trim()) {
+    return reply.code(409).send({ error: 'The stored contract path is unavailable. Metadata was kept for review.' });
   }
+  // Retry uses the same owned object path after a metadata failure. Real
+  // already-absent-object behavior still needs isolated Storage verification.
+  const { error: storageError } = await supabase.storage.from('contracts').remove([contract.file_path]);
+  if (storageError) return reply.status(500).send({ error: 'Could not remove the stored contract. The database record was kept for retry.' });
 
   // 2. Delete database row
   const { error } = await supabase
@@ -200,7 +225,7 @@ app.delete('/contracts/:id', async (req, reply) => {
     .eq('user_id', req.authenticatedUserId!)
     .eq('id', id);
 
-  if (error) return reply.status(500).send({ error: 'The database request could not be completed.' });
+  if (error) return reply.status(500).send({ error: 'The file was removed, but metadata cleanup failed. Retry deletion to finish cleanup.', code: 'METADATA_CLEANUP_PENDING' });
   return { success: true };
 });
 
