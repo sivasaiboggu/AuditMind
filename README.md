@@ -207,3 +207,15 @@ leave the original clause text unchanged. They no longer infer broad indemnity,
 a three-month liability cap or a safer redline from a title. Offline chat does
 not invent default terms or references to nonexistent sections. Four offline
 provider tests cover those examples; no legal assessment quality is established.
+
+
+### Regulatory retrieval provenance
+
+Missing/failed embeddings now return no vector, not 768 fabricated zeros. Vector
+errors can fall back to keyword search of the configured corpus. With no corpus,
+no match, malformed rows or failed retrieval, the explanation receives an explicit
+absence notice, never canned UCC/GDPR excerpts or an uncited indemnity rule.
+Retrieved excerpts disclose that currency and applicability are unverified. Six
+offline regressions cover this boundary; no live corpus or legal validation is
+claimed. Corpus curation, citations, jurisdiction and source freshness remain
+required before anyone relies on regulatory output.
