@@ -184,10 +184,18 @@ export async function processContract(
             deps.score(item.text),
             deps.retrieve(item.text)
           ]);
-          const label = classification.label;
+          const label = classification?.label;
+          if (!['low', 'medium', 'high', 'critical'].includes(label) ||
+              typeof score !== 'number' || !Number.isFinite(score) || score < 0 || score > 100) {
+            throw new Error('Invalid clause risk assessment.');
+          }
 
           // Call Gemini for redlines
           const analysis = await deps.analyze(item.title, item.text, regContext);
+          if (!analysis || typeof analysis.explanation !== 'string' || !analysis.explanation.trim() ||
+              typeof analysis.suggestedRedline !== 'string') {
+            throw new Error('Invalid clause explanation response.');
+          }
 
           completedClauses++;
           const percentage = 35 + Math.floor((completedClauses / rawClauses.length) * 50);

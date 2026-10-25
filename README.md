@@ -251,3 +251,14 @@ History is bounded to40 user/model messages,8,000 characters per message and
 32,000 total characters. Five synthetic WebSocket regressions cover blocked and
 admitted paths. This does not validate model answers or supply a full rate limit,
 prompt-injection defense or legal review.
+
+
+### Pipeline result boundaries
+
+Before persisting a clause, the worker checks its known risk label, finite 0-100
+priority score, nonempty explanation and string redline. Malformed service output
+fails the run before clause insertion instead of producing a completed result
+with null, non-finite or invented values. A real zero score remains valid.
+Fifteen isolated worker tests cover these boundaries. This is not legal accuracy
+validation, live provider/database verification, or a transactional retry/outbox
+implementation; partial-write recovery remains separate.
