@@ -262,3 +262,15 @@ with null, non-finite or invented values. A real zero score remains valid.
 Fifteen isolated worker tests cover these boundaries. This is not legal accuracy
 validation, live provider/database verification, or a transactional retry/outbox
 implementation; partial-write recovery remains separate.
+
+### Chat stream integrity
+
+The API explicitly requests SSE and decodes complete JSON events with a streaming
+UTF-8 decoder. Split network chunks, escaped quotes, line breaks and Unicode no
+longer rely on regex matching or dropped buffer tails. Empty/malformed streams,
+stream errors and events over 1 MiB fail instead of reporting completed output.
+Once an answer has started, an interrupted stream is reported as incomplete;
+local-search fallback is not appended to a partial AI answer. Provider request
+objects are not logged on that failure path. Eight isolated decoder regressions
+cover these cases, without provider calls. Live provider behavior and legal
+accuracy remain unverified.

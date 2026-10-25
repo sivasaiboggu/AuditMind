@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { readGeminiSse } from './gemini-stream.js';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
@@ -94,6 +95,7 @@ export async function streamChatWithGemini(
     return;
   }
 
+  let answerStarted = false;
   try {
     // Base System Prompt
     const systemPrompt = `You are AuditMind, a contract risk AI. Answer questions using ONLY the contract clauses provided here:\n\n${contractContext}\n\nKeep your response concise, professional, and highlight specific clause numbers when referencing rules.`;
@@ -110,46 +112,26 @@ export async function streamChatWithGemini(
       }))
     ];
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?key=${GEMINI_API_KEY}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`;
     
     const response = await axios({
       method: 'post',
       url,
       data: { contents },
-      responseType: 'stream'
+      responseType: 'stream',
+      timeout: 15000
     });
 
-    return new Promise((resolve, reject) => {
-      let buffer = '';
-      response.data.on('data', (chunk: Buffer) => {
-        buffer += chunk.toString();
-        // Parse server-sent events or stream chunks
-        // Gemini stream returns JSON array elements or text lines
-        // A simple parse of the buffer that matches candidates.content.parts.text
-        try {
-          const matches = [...buffer.matchAll(/"text":\s*"([^"]+)"/g)];
-          if (matches.length > 0) {
-            for (const match of matches) {
-              const cleaned = match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
-              onToken(cleaned);
-            }
-            buffer = ''; // Clear buffer once processed
-          }
-        } catch (e) {
-          // Keep buffer accumulating if JSON is incomplete
-        }
-      });
-
-      response.data.on('end', () => {
-        resolve();
-      });
-
-      response.data.on('error', (err: any) => {
-        reject(err);
-      });
+    await readGeminiSse(response.data, token => {
+      answerStarted = true;
+      onToken(token);
     });
   } catch (error: any) {
-    console.error('Gemini stream failed:', error);
+    // Never log provider request objects: they can include keys and contract text.
+    console.error('Gemini stream could not be completed.');
+    if (answerStarted) {
+      throw new Error('The streamed answer was interrupted and is incomplete. Please retry.');
+    }
     
     // Determine the latest user query from the messages array
     const userQuery = messages[messages.length - 1]?.content || '';
