@@ -27,3 +27,10 @@ test('cleanup during JSON parsing also blocks late context writes',async()=>{
 test('current empty clause response resets selection instead of retaining stale clause',async()=>{
  const {calls}=routeEffect(async()=>({ok:true,json:async()=>[]}));await tick();assert.equal(calls.at(-1)[0],'setSelectedClause');assert.equal(calls.at(-1)[1],null);
 });
+test('account switch clears all private workspace data',()=>{
+ const s=store();s.setState({user:{id:'a'},contracts:[{id:'private'}],activeContract:{id:'a'},chatMessages:[{message:'private'}],activeClauses:[{id:'private'}],isAnalyzing:true});
+ s.getState().setUser({id:'b'});assert.equal(s.getState().contracts.length,0);assert.equal(s.getState().chatMessages.length,0);assert.equal(s.getState().activeClauses.length,0);assert.equal(s.getState().activeContract,null);assert.equal(s.getState().isAnalyzing,false);
+});
+test('same-owner profile refresh preserves workspace and explicit logout clears it',()=>{
+ const s=store();s.setState({user:{id:'a'},contracts:[{id:'keep'}],chatMessages:[{message:'keep'}]});s.getState().setUser({id:'a',name:'Updated'});assert.equal(s.getState().contracts.length,1);s.getState().resetWorkspace();assert.equal(s.getState().contracts.length,0);assert.equal(s.getState().user,null);
+});

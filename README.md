@@ -294,3 +294,15 @@ keeps its chat. Route loads ignore results after cleanup, including delayed JSON
 parsing, and empty clause responses clear the selection. Six isolated store and
 route-effect tests cover these boundaries. This is not account-wide auth-store
 clearing, live Supabase verification, or durable per-contract chat storage.
+
+### Auth ownership transitions
+
+Changing the authenticated user clears the private in-memory workspace before
+profile lookup. Profile and initial-session responses are guarded by an auth
+epoch so late results cannot restore a signed-out/previous user's profile.
+Logout clears workspace state locally before the remote sign-out. Configured
+Supabase auth never restores a demo localStorage identity and rejects demo login
+bypass; demo login remains available only without configured auth. Six isolated
+auth/store regressions cover these transitions. This is not full cross-account
+isolation proof: existing dashboard request races, live auth/RLS behavior and
+other asynchronous consumers still need their own checks.

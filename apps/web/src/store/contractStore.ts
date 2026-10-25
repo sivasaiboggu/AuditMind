@@ -22,6 +22,7 @@ interface ContractState {
   setIsAnalyzing: (isAnalyzing: boolean) => void;
   setProgress: (progress: ProcessingProgress | null) => void;
   setUser: (user: any) => void;
+  resetWorkspace: () => void;
 }
 
 export const useContractStore = create<ContractState>((set) => ({
@@ -46,5 +47,11 @@ export const useContractStore = create<ContractState>((set) => ({
   setActiveSessionId: (activeSessionId) => set({ activeSessionId }),
   setIsAnalyzing: (isAnalyzing) => set({ isAnalyzing }),
   setProgress: (progress) => set({ progress }),
-  setUser: (user) => set({ user }),
+  setUser: (user) => set(state => state.user?.id === user?.id ? { user } : {
+    user, contracts: [], activeContract: null, activeClauses: [], activeReport: null,
+    chatMessages: [], activeSessionId: null, isAnalyzing: false, progress: null,
+  }),
+  resetWorkspace: () => set({ user: null, contracts: [], activeContract: null,
+    activeClauses: [], activeReport: null, chatMessages: [], activeSessionId: null,
+    isAnalyzing: false, progress: null }),
 }));
