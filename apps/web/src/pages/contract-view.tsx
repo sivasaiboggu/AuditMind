@@ -16,7 +16,6 @@ export default function ContractView() {
   const navigate = useNavigate();
   const { logout } = useAuth();
   const {
-    contracts,
     setContracts,
     activeContract,
     setActiveContract,
@@ -42,53 +41,48 @@ export default function ContractView() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  // 1. Fetch real clauses from database on mount or ID change
-  const fetchClauses = async (contractId: string) => {
-    try {
-      const response = await authenticatedFetch(`${API_URL}/contracts/${contractId}/clauses`);
-      if (response.ok) {
-        const data = await response.json();
-        setActiveClauses(data);
-        if (data.length > 0) {
-          setSelectedClause(data[0]);
-        }
-      }
-    } catch (err) {
-      console.error('Failed to fetch contract clauses:', err);
-    }
-  };
-
+  // Scope each load to this route effect. Late results from a prior contract
+  // must not overwrite the active document or selected clause.
   useEffect(() => {
     if (!id) return;
-    const currentContract = contracts.find(c => c.id === id);
-    if (currentContract) {
-      setActiveContract(currentContract);
-      fetchClauses(id);
-    } else {
-      // If the contract is not found in the local store (e.g., direct navigation or page refresh),
-      // fetch the contracts from the API to see if it exists.
-      const loadContract = async () => {
-        try {
+    let disposed = false;
+    setSelectedClause(null);
+    setChatInput('');
+    setActiveTab('analysis');
+    const current = useContractStore.getState().contracts.find(c => c.id === id);
+    setActiveContract(current || null);
+    setActiveClauses([]);
+    const load = async () => {
+      try {
+        if (!current) {
           const response = await authenticatedFetch(`${API_URL}/contracts`);
-          if (response.ok) {
-            const data = await response.json();
-            setContracts(data);
-            const found = data.find((c: any) => c.id === id);
-            if (found) {
-              setActiveContract(found);
-              await fetchClauses(id);
-              return;
-            }
-          }
-          navigate('/dashboard');
-        } catch (err) {
-          console.error('Failed to fetch contract details:', err);
-          navigate('/dashboard');
+          if (disposed) return;
+          if (!response.ok) throw new Error('Contract list unavailable.');
+          const data = await response.json();
+          if (disposed) return;
+          const found = data.find((contract: any) => contract.id === id);
+          if (!found) { navigate('/dashboard'); return; }
+          setContracts(data);
+          setActiveContract(found);
         }
-      };
-      loadContract();
-    }
-  }, [id, contracts, navigate, setActiveContract, setActiveClauses, setContracts]);
+        const response = await authenticatedFetch(`${API_URL}/contracts/${id}/clauses`);
+        if (disposed) return;
+        if (!response.ok) throw new Error('Contract clauses unavailable.');
+        const clauses = await response.json();
+        if (disposed) return;
+        setActiveClauses(clauses);
+        setSelectedClause(clauses[0] || null);
+      } catch {
+        if (!disposed) {
+          setActiveClauses([]);
+          setSelectedClause(null);
+          console.error('Contract context could not be loaded.');
+        }
+      }
+    };
+    void load();
+    return () => { disposed = true; };
+  }, [id, navigate, setActiveContract, setActiveClauses, setContracts]);
 
   // 2. Configure WebSocket connection for real-time document chat
   useEffect(() => {
@@ -96,6 +90,7 @@ export default function ContractView() {
     wsRef.current = ws;
 
     ws.onopen = () => {
+      if (wsRef.current !== ws) return;
       console.log('// WS: Connected to RAG chat drawer');
       setWsConnected(true);
       if (id) {

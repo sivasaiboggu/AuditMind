@@ -285,3 +285,12 @@ The response handler is installed before sending and updates current state,
 not the stale pre-question snapshot. Three isolated state-helper tests and a
 synthetic local desktop rendering cover the notice/history behavior. No live
 provider, authenticated Supabase session, or full reconnect flow was verified.
+
+### Contract-view context ownership
+
+Switching the active contract clears the prior clauses, report, chat, session and
+progress before loading the new document. A metadata refresh for the same ID
+keeps its chat. Route loads ignore results after cleanup, including delayed JSON
+parsing, and empty clause responses clear the selection. Six isolated store and
+route-effect tests cover these boundaries. This is not account-wide auth-store
+clearing, live Supabase verification, or durable per-contract chat storage.

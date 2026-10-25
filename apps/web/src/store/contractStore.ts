@@ -36,7 +36,9 @@ export const useContractStore = create<ContractState>((set) => ({
   user: null,
 
   setContracts: (contracts) => set({ contracts }),
-  setActiveContract: (activeContract) => set({ activeContract }),
+  setActiveContract: (activeContract) => set(state => state.activeContract?.id === activeContract?.id
+    ? { activeContract }
+    : { activeContract, activeClauses: [], activeReport: null, chatMessages: [], activeSessionId: null, progress: null }),
   setActiveClauses: (activeClauses) => set({ activeClauses }),
   setActiveReport: (activeReport) => set({ activeReport }),
   setChatMessages: (chatMessages) => set({ chatMessages }),
