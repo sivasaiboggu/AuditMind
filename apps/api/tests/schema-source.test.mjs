@@ -27,3 +27,7 @@ test('analysis commit is locked, atomic, idempotent and service-role only',()=>{
 test('durable delivery uses private database outbox with lease fencing',()=>{
  const sql=read('20261025000002_durable_contract_jobs.sql');assert.match(sql,/AFTER INSERT ON public.contracts/);assert.match(sql,/FOR UPDATE OF j SKIP LOCKED/);assert.match(sql,/lease_token IS DISTINCT FROM p_lease_token/);assert.match(sql,/PERFORM public.commit_contract_analysis/);assert.match(sql,/REVOKE ALL ON public.contract_jobs FROM anon, authenticated/);assert.doesNotMatch(sql,/USING \(true\)/);
 });
+
+test('retry migration bounds expired and explicit retries and keeps errors non-sensitive',()=>{
+ const sql=read('20261025000003_bounded_job_retries.sql');assert.match(sql,/j.attempts>=3/);assert.match(sql,/j.attempts<3/);assert.match(sql,/target.attempts>=3/);assert.match(sql,/30\*target.attempts/);assert.match(sql,/RETRY_LIMIT_REACHED/);assert.match(sql,/STORAGE_RETRY_PENDING/);assert.match(sql,/REVOKE ALL ON FUNCTION/);
+});

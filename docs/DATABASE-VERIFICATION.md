@@ -122,3 +122,26 @@ fencing prevents stale result writes but does not prevent repeated provider work
 or prove legal accuracy. Free-tier limits depend on traffic and polling, not the
 presence of a queue design. Deployment and all live migration/config work remain
 held until explicitly authorized.
+
+## Bounded retries and owner-visible failure state
+
+The matching API now requires `20261025000003_bounded_job_retries.sql` as well.
+Apply reviewed migrations first, never deploy this API independently on an old
+schema. Automatic recovery is capped at three claimed attempts. Transient Storage
+failures return the current fenced job to pending with 30/60-second backoff;
+the third failure or expired third lease stops the job and marks the owned
+contract failed. No raw provider error is stored or shown. The dashboard shows
+attempt count, pending retrieval/retry time, incomplete analysis, or retry-limit
+exhaustion, with a warning against duplicate uploads. Job rows remain private.
+
+Disposable PostgreSQL assertions verify explicit retry backoff, claim exclusion
+during backoff, attempt counts, owner-visible error codes and terminalization of
+an expired final lease. Worker tests verify fenced retry calls and that a lost
+heartbeat stops further output/status writes. Lease uncertainty does not grant
+permission to commit. A completed commit clears previous transient notices.
+
+This is bounded automatic recovery, not automatic repair of an invalid document
+or provider configuration. Terminal jobs require operator review. There is no
+user-triggered replay endpoint, privileged admin console, or automatic replay of
+old records. Live Supabase/Storage behavior, true JWT issuance, corpus/pgvector,
+free-tier capacity and legal accuracy remain unverified. No live rollout occurred.

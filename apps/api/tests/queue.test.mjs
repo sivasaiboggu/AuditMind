@@ -104,3 +104,14 @@ test('fenced processor uses job commit and job failure rather than unfenced writ
  await processContract('synthetic','synthetic.txt','text/plain',Buffer.from('test'),deps,'lease-a');assert.equal(calls[0][0],'complete_contract_job');assert.equal(calls[0][1].p_lease_token,'lease-a');
  deps.classify=async()=>{throw new Error('synthetic');};calls.length=0;await processContract('synthetic','synthetic.txt','text/plain',Buffer.from('test'),deps,'lease-b');assert.equal(calls[0][0],'fail_contract_job');assert.equal(calls[0][1].p_lease_token,'lease-b');assert.deepEqual(effects.statuses,[]);
 });
+
+
+test('transient download failures request fenced bounded retry instead of terminal failure',async()=>{
+ const calls=[];const store={rpc:async(name,args)=>{calls.push([name,args]);return name==='claim_contract_job'?{data:[{contract_id:'synthetic',lease_token:'lease'}],error:null}:{data:true,error:null};},storage:{from:()=>({download:async()=>({data:null,error:new Error('synthetic')})})}};
+ await runDurableJob(store);assert.equal(calls[1][0],'retry_contract_job');assert.equal(calls[1][1].p_lease_token,'lease');
+});
+test('lost lease prevents output persistence and terminal failure writes',async()=>{
+ const {deps,effects}=fixture();let current=true;deps.classify=async()=>{current=false;return {label:'high'};};
+ await processContract('synthetic','synthetic.txt','text/plain',Buffer.from('test'),deps,'lease',()=>current);
+ assert.deepEqual(effects.inserted,[]);assert.deepEqual(effects.statuses,[]);assert.ok(!effects.progress.some(event=>['completed','failed'].includes(event[1])));
+});

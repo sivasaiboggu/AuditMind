@@ -35,7 +35,7 @@ for st in parse_sql(s):
 (work/'core.sql').write_text('\n'.join(out))
 PY
 "${PSQL[@]}" -f "$WORK/core.sql"
-for migration in 20240101000001_profiles.sql 20260630000000_init_schema.sql 20261025000000_owner_policy_hardening.sql 20261025000001_atomic_analysis_commit.sql 20261025000002_durable_contract_jobs.sql; do
+for migration in 20240101000001_profiles.sql 20260630000000_init_schema.sql 20261025000000_owner_policy_hardening.sql 20261025000001_atomic_analysis_commit.sql 20261025000002_durable_contract_jobs.sql 20261025000003_bounded_job_retries.sql; do
  "${PSQL[@]}" -f "$ROOT/supabase/migrations/$migration"
 done
 "${PSQL[@]}" -f "$ROOT/scripts/db/verify-atomic.sql"
@@ -85,3 +85,4 @@ DO $$ DECLARE j public.contract_jobs%ROWTYPE;BEGIN
 END $$;
 SELECT 'PASS: immediate database restart preserves accepted job and expired lease is reclaimed' AS result;
 SQL
+"${PSQL[@]}" -f "$ROOT/scripts/db/verify-retries.sql"

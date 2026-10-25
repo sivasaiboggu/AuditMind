@@ -48,22 +48,28 @@ export async function runDurableJob(store: any, process = processContract): Prom
   // An expired lease is fenced at commit/failure. Heartbeats reduce re-delivery
   // during slow providers but never grant authority after a lost lease.
   let renewing = false;
+  let leaseCurrent = true;
   const heartbeat = setInterval(async () => {
     if (renewing) return;
     renewing = true;
-    try { await store.rpc('renew_contract_job', { p_contract_id: job.contract_id, p_lease_token: job.lease_token }); }
-    catch { console.error('Job lease renewal could not be confirmed.'); }
+    try {
+      const result = await store.rpc('renew_contract_job', { p_contract_id: job.contract_id, p_lease_token: job.lease_token });
+      if (result.error || result.data !== true) leaseCurrent = false;
+    }
+    catch { leaseCurrent = false; console.error('Job lease renewal could not be confirmed.'); }
     finally { renewing = false; }
   }, 30000);
   try {
     const { data: file, error: downloadError } = await store.storage.from('contracts').download(job.file_path);
     if (downloadError || !file) throw new Error('Job file could not be retrieved.');
     const buffer = Buffer.from(await file.arrayBuffer());
-    await process(job.contract_id, job.file_path, job.mime_type, buffer, undefined, job.lease_token);
+    await process(job.contract_id, job.file_path, job.mime_type, buffer, undefined, job.lease_token, () => leaseCurrent);
   } catch {
     // Download/transport failures are retryable after lease expiry. A missing
     // response does not mean the object or a committed result is absent.
-    console.error('Durable job attempt interrupted; lease recovery remains pending.');
+    console.error('Durable job attempt interrupted; bounded recovery remains pending.');
+    try { await store.rpc('retry_contract_job', { p_contract_id: job.contract_id, p_lease_token: job.lease_token }); }
+    catch { console.error('Retry scheduling could not be confirmed; lease expiry will reconcile.'); }
   } finally { clearInterval(heartbeat); }
   return true;
 }
@@ -95,11 +101,13 @@ export async function processContract(
     analyze: analyzeClauseWithGemini,
     progress: updateProgress
   },
-  leaseToken?: string
+  leaseToken?: string,
+  leaseCurrent: () => boolean = () => true
 ) {
   console.log(`// [Queue] Processing Contract ID: ${contractId}`);
   let persistenceStarted = false;
   try {
+    if (!leaseCurrent()) return;
     if (!deps.store) throw new Error('Contract storage is not configured.');
     // 1. Text Extraction
     deps.progress(contractId, 'extracting', 15, 'Extracting text from document body...');
@@ -121,6 +129,7 @@ export async function processContract(
     let completedClauses = 0;
     const analyze = async (item: typeof rawClauses[number]) => {
         try {
+          if (!leaseCurrent()) throw new Error('Job lease unavailable.');
           // Run risk classification, scoring, and RAG retrieval in parallel
           const [classification, score, regContext] = await Promise.all([
             deps.classify(item.text),
@@ -140,6 +149,7 @@ export async function processContract(
             throw new Error('Invalid clause explanation response.');
           }
 
+          if (!leaseCurrent()) throw new Error('Job lease unavailable.');
           completedClauses++;
           const percentage = 35 + Math.floor((completedClauses / rawClauses.length) * 50);
           deps.progress(
@@ -187,6 +197,7 @@ export async function processContract(
     
     // One transaction replaces old partial rows and commits the status/score.
     // This requires the reviewed source migration before deploying this API.
+    if (!leaseCurrent()) return;
     persistenceStarted = true;
     const { error: commitError } = await deps.store.rpc(leaseToken ? 'complete_contract_job' : 'commit_contract_analysis', {
       ...(leaseToken ? { p_lease_token: leaseToken } : {}),
@@ -200,6 +211,7 @@ export async function processContract(
     deps.progress(contractId, 'completed', 100, 'Compliance inspection fully generated.');
     console.log(`// [Queue] Completed processing contract ${contractId} successfully.`);
   } catch (error) {
+    if (!leaseCurrent()) return;
     console.error('Contract processing failed.');
     deps.progress(contractId, 'failed', 0, persistenceStarted
       ? 'Analysis completion could not be confirmed. Check the dashboard before retrying; stored results may already have committed.'

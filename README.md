@@ -371,7 +371,7 @@ not automatically migrated or replayed. Old processing contracts without MIME/jo
 metadata need an operator-reviewed inventory, not guessed file types or blind retry.
 
 Required rollout order: verify and apply all reviewed additive migrations through
-`20261025000002_durable_contract_jobs.sql` before this API. Never deploy the API
+`20261025000003_bounded_job_retries.sql` before this API. Never deploy the API
 independently on the old schema. No live migration, backfill, replay or deployment
 has been performed. Disposable PostgreSQL tests cover the outbox, lease expiry and
 fencing, atomic completion, cleanup and persistence through an immediate restart.
@@ -379,3 +379,14 @@ This does not verify real Storage downloads, Supabase/network behavior or provid
 quality. Transient download failures stay recoverable after expiry and need
 operational visibility; retries can repeat provider work, although result writes
 are fenced. Operators must review old jobs/files before any live rollout.
+
+### Bounded recovery and failure visibility
+
+The source API requires migrations through
+`20261025000003_bounded_job_retries.sql` before rollout. Storage-retrieval retries
+now back off for 30/60 seconds and stop at three claimed attempts, including crash
+re-deliveries. The dashboard shows owned job attempt counts, upcoming retries,
+analysis failure and exhausted recovery without exposing raw provider errors.
+A lost heartbeat prevents further output/status writes; lease tokens remain the
+database commit fence. Disposable PostgreSQL tests verify backoff/cap behavior.
+No live service or database was changed, and no replay/admin endpoint is exposed.

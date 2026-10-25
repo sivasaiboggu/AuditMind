@@ -8,6 +8,9 @@ export interface Contract {
   name: string;
   filePath: string;
   status: ContractStatus;
+  processingAttempts?: number;
+  processingError?: string | null;
+  nextRetryAt?: string | null;
   overallRiskScore: number; // 0 to 100
   createdAt: string;
   updatedAt: string;

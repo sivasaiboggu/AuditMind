@@ -1,3 +1,4 @@
+import { jobStatusNotice } from '../lib/job-status';
 import { workspaceGuard } from '../lib/workspace-guard';
 import { authenticatedFetch } from '../lib/api';
 import { useEffect, useState, useRef } from 'react';
@@ -350,14 +351,15 @@ export default function Dashboard() {
                       : 'cursor-not-allowed opacity-75'
                   }`}
                 >
-                  <div className="space-y-1">
+                  <div className="space-y-1 min-w-0">
                     <div className="flex items-center gap-3">
                       <span className="font-semibold text-text-primary text-sm tracking-wide">
                         {contract.name}
                       </span>
                       {getStatusBadge(contract.status)}
                     </div>
-                    <div className="flex items-center gap-4 text-xs font-mono text-text-secondary">
+                    {jobStatusNotice(contract) && <p role="status" className="text-xs text-risk-medium max-w-xl leading-relaxed break-words">{jobStatusNotice(contract)}</p>}
+                    <div className="flex flex-wrap items-center gap-4 text-xs font-mono text-text-secondary">
                       <span>ID: {contract.id.substring(0, 8)}...</span>
                       <span>•</span>
                       <span>Uploaded: {new Date(contract.createdAt).toLocaleDateString()}</span>

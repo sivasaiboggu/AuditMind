@@ -197,6 +197,9 @@ app.get('/contracts', async (req, reply) => {
     name: item.name,
     filePath: item.file_path,
     status: item.status,
+    processingAttempts: item.processing_attempts || 0,
+    processingError: item.processing_error || null,
+    nextRetryAt: item.next_retry_at || null,
     overallRiskScore: item.overall_risk_score,
     createdAt: item.created_at,
     updatedAt: item.updated_at
