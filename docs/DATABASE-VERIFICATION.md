@@ -94,3 +94,31 @@ PG_SHARE=/absolute/path/to/postgresql/share \
 `psql` must be on PATH. The default loopback test port is 55439; set
 `PG_TEST_PORT` to another unused port if needed. Never point this harness at an
 existing cluster. It uses only synthetic `example.invalid` identities and fixtures.
+
+
+## Durable-job rollout and recovery checks
+
+`20261025000002_durable_contract_jobs.sql` adds the authoritative job ledger,
+contract MIME field, insert/delete triggers and service-only lease RPCs. The worker
+no longer delivers via Redis or memory. The ledger and metadata are transactional;
+Storage upload still precedes metadata and can leave a retained object when
+acceptance is ambiguous. Inventory those objects rather than delete or retry them
+without checking the actual owned record. Existing Redis jobs and processing
+contracts with missing MIME/job metadata require a separate operator-approved
+reconciliation. This migration does not guess MIME types or replay old payloads.
+
+Local tests passed trigger rollback on invalid MIME, one active lease per job,
+lease renewal and expiry, changed tokens on re-delivery, stale completion/failure
+denial, atomic result/job completion, completed acknowledgement, private job cleanup,
+and immediate PostgreSQL shutdown/restart preserving the ledger. Lease expiry was
+advanced explicitly for the restart test rather than waiting two minutes. This is
+real local database execution, not real Supabase Storage/Auth/network recovery.
+
+Before rollout, test actual private-object download, auth/session expiry, sustained
+heartbeat delays, service restart and response loss. Monitor old processing jobs,
+repeated file-download failures, exhausted external quotas and retained upload
+objects. There is no automatic dead-letter dashboard or retry cap yet. Lease
+fencing prevents stale result writes but does not prevent repeated provider work
+or prove legal accuracy. Free-tier limits depend on traffic and polling, not the
+presence of a queue design. Deployment and all live migration/config work remain
+held until explicitly authorized.

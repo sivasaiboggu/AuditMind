@@ -35,7 +35,7 @@ for st in parse_sql(s):
 (work/'core.sql').write_text('\n'.join(out))
 PY
 "${PSQL[@]}" -f "$WORK/core.sql"
-for migration in 20240101000001_profiles.sql 20260630000000_init_schema.sql 20261025000000_owner_policy_hardening.sql 20261025000001_atomic_analysis_commit.sql; do
+for migration in 20240101000001_profiles.sql 20260630000000_init_schema.sql 20261025000000_owner_policy_hardening.sql 20261025000001_atomic_analysis_commit.sql 20261025000002_durable_contract_jobs.sql; do
  "${PSQL[@]}" -f "$ROOT/supabase/migrations/$migration"
 done
 "${PSQL[@]}" -f "$ROOT/scripts/db/verify-atomic.sql"
@@ -63,4 +63,25 @@ DO $$ BEGIN
  THEN RAISE EXCEPTION 'concurrent idempotency failed'; END IF;
 END $$;
 SELECT 'PASS: concurrent commits serialize and leave one result set' AS result;
+SQL
+"${PSQL[@]}" -f "$ROOT/scripts/db/verify-jobs.sql"
+# A process restart must not lose an accepted job. Expire its persisted lease
+# explicitly so this test need not sleep for the full two-minute production lease.
+"${PSQL[@]}" <<'SQL'
+INSERT INTO public.contracts(id,user_id,name,file_path,status,mime_type) VALUES
+ ('30000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','Restart fixture','restart.txt','processing','text/plain');
+SELECT contract_id,state,attempts FROM public.claim_contract_job();
+SQL
+"$PG_BIN/pg_ctl" -D "$WORK/data" -m immediate stop
+"$PG_BIN/pg_ctl" -D "$WORK/data" -l "$WORK/server.log" -o "-h 127.0.0.1 -p $PORT -k $WORK" start
+"${PSQL[@]}" <<'SQL'
+DO $$ BEGIN
+ IF (SELECT state FROM public.contract_jobs WHERE contract_id='30000000-0000-0000-0000-000000000001')<>'running' THEN RAISE EXCEPTION 'restart lost running job';END IF;
+END $$;
+UPDATE public.contract_jobs SET lease_until=now()-interval '1 second' WHERE contract_id='30000000-0000-0000-0000-000000000001';
+DO $$ DECLARE j public.contract_jobs%ROWTYPE;BEGIN
+ SELECT * INTO j FROM public.claim_contract_job();
+ IF j.contract_id<>'30000000-0000-0000-0000-000000000001' OR j.attempts<>2 THEN RAISE EXCEPTION 'restart recovery failed';END IF;
+END $$;
+SELECT 'PASS: immediate database restart preserves accepted job and expired lease is reclaimed' AS result;
 SQL

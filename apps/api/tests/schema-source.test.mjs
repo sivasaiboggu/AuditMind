@@ -24,3 +24,6 @@ test('analysis commit is locked, atomic, idempotent and service-role only',()=>{
  assert.match(sql,/REVOKE ALL ON FUNCTION.*FROM PUBLIC, anon, authenticated/);
  assert.match(sql,/GRANT EXECUTE ON FUNCTION.*TO service_role/);
 });
+test('durable delivery uses private database outbox with lease fencing',()=>{
+ const sql=read('20261025000002_durable_contract_jobs.sql');assert.match(sql,/AFTER INSERT ON public.contracts/);assert.match(sql,/FOR UPDATE OF j SKIP LOCKED/);assert.match(sql,/lease_token IS DISTINCT FROM p_lease_token/);assert.match(sql,/PERFORM public.commit_contract_analysis/);assert.match(sql,/REVOKE ALL ON public.contract_jobs FROM anon, authenticated/);assert.doesNotMatch(sql,/USING \(true\)/);
+});

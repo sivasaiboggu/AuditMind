@@ -1,4 +1,3 @@
-import { Redis } from '@upstash/redis';
 import { extractText, segmentClauses } from './parser.js';
 import { classifyClauseRisk, getRiskScore } from './ml.js';
 import { retrieveRegulations } from './rag.js';
@@ -7,8 +6,6 @@ import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const UPSTASH_REDIS_REST_URL = process.env.UPSTASH_REDIS_REST_URL;
-const UPSTASH_REDIS_REST_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 
 const supabase = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
@@ -29,108 +26,53 @@ function updateProgress(contractId: string, stage: string, percent: number, mess
   }
 }
 
-// In-Memory Queue Fallback
-class MemoryQueue {
-  private queue: Array<{ contractId: string; filePath: string; mimeType: string; buffer: Buffer }> = [];
-  private isProcessing = false;
-
-  async add(contractId: string, filePath: string, mimeType: string, buffer: Buffer) {
-    this.queue.push({ contractId, filePath, mimeType, buffer });
-    this.processNext();
-  }
-
-  private async processNext() {
-    if (this.isProcessing || this.queue.length === 0) return;
-    this.isProcessing = true;
-    
-    const job = this.queue.shift();
-    if (job) {
-      try {
-        await processContract(job.contractId, job.filePath, job.mimeType, job.buffer);
-      } catch (err) {
-        console.error('Memory queue job could not be processed.');
-      }
-    }
-    
-    this.isProcessing = false;
-    this.processNext();
-  }
-}
-
-// Upstash REST Client Instance
-let upstashClient: Redis | null = null;
-const memoryQueue = new MemoryQueue();
-
-// Initialize Queue setup
+/** Database job ledger is authoritative, created with contract metadata by trigger. */
+let workerStarted = false;
 export async function initializeQueue() {
-  if (!UPSTASH_REDIS_REST_URL || !UPSTASH_REDIS_REST_TOKEN) {
-    console.log('// Upstash REST credentials not configured. Running in Memory Queue mode.');
-    return;
-  }
+  if (!supabase || workerStarted) return;
+  workerStarted = true;
+  void startQueueWorker();
+}
 
+export async function enqueueContractJob(contractId: string, _filePath: string, _mimeType: string, _buffer: Buffer) {
+  if (!supabase) throw new Error('Contract job storage is not configured.');
+  const { data, error } = await supabase.from('contract_jobs').select('contract_id').eq('contract_id', contractId).maybeSingle();
+  if (error || !data) throw new Error('Durable job acceptance could not be confirmed.');
+}
+
+export async function runDurableJob(store: any, process = processContract): Promise<boolean> {
+  const { data, error } = await store.rpc('claim_contract_job');
+  if (error) throw new Error('Durable job claim failed.');
+  const job = data?.[0];
+  if (!job) return false;
+  // An expired lease is fenced at commit/failure. Heartbeats reduce re-delivery
+  // during slow providers but never grant authority after a lost lease.
+  let renewing = false;
+  const heartbeat = setInterval(async () => {
+    if (renewing) return;
+    renewing = true;
+    try { await store.rpc('renew_contract_job', { p_contract_id: job.contract_id, p_lease_token: job.lease_token }); }
+    catch { console.error('Job lease renewal could not be confirmed.'); }
+    finally { renewing = false; }
+  }, 30000);
   try {
-    upstashClient = new Redis({
-      url: UPSTASH_REDIS_REST_URL,
-      token: UPSTASH_REDIS_REST_TOKEN
-    });
-
-    console.log('// Upstash REST Redis client initialized successfully.');
-    
-    // Start background polling loop for jobs
-    startQueueWorker();
-  } catch (error) {
-    console.warn('Upstash initialization failed; memory queue is not durable.');
-  }
+    const { data: file, error: downloadError } = await store.storage.from('contracts').download(job.file_path);
+    if (downloadError || !file) throw new Error('Job file could not be retrieved.');
+    const buffer = Buffer.from(await file.arrayBuffer());
+    await process(job.contract_id, job.file_path, job.mime_type, buffer, undefined, job.lease_token);
+  } catch {
+    // Download/transport failures are retryable after lease expiry. A missing
+    // response does not mean the object or a committed result is absent.
+    console.error('Durable job attempt interrupted; lease recovery remains pending.');
+  } finally { clearInterval(heartbeat); }
+  return true;
 }
 
-/**
- * Add a contract job to Upstash Redis queue.
- */
-export async function enqueueContractJob(
-  contractId: string,
-  filePath: string,
-  mimeType: string,
-  buffer: Buffer
-) {
-  if (upstashClient) {
-    const payload = {
-      contractId,
-      filePath,
-      mimeType,
-      bufferBase64: buffer.toString('base64')
-    };
-    
-    // Push job into Upstash list
-    await upstashClient.lpush('auditmind:queue', JSON.stringify(payload));
-    console.log(`// [Queue] Enqueued job in Upstash Redis list: contractId=${contractId}`);
-  } else {
-    await memoryQueue.add(contractId, filePath, mimeType, buffer);
-  }
-}
-
-/**
- * Background Worker Polling Loop for Upstash REST Redis
- */
 async function startQueueWorker() {
-  console.log('// [Worker] Upstash Redis REST background polling loop active.');
-  
-  while (true) {
-    if (upstashClient) {
-      try {
-        const rawJob = await upstashClient.rpop('auditmind:queue');
-        if (rawJob) {
-          const job = typeof rawJob === 'string' ? JSON.parse(rawJob) : rawJob;
-          const buffer = Buffer.from(job.bufferBase64, 'base64');
-          
-          await processContract(job.contractId, job.filePath, job.mimeType, buffer);
-        }
-      } catch (err) {
-        console.error('Queue worker request failed.');
-      }
-    }
-    
-    // Poll every 1.5 seconds to keep latency low without exceeding free tier requests
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+  while (workerStarted && supabase) {
+    try { if (await runDurableJob(supabase)) continue; }
+    catch { console.error('Durable queue poll failed.'); }
+    await new Promise(resolve => setTimeout(resolve, 15000));
   }
 }
 
@@ -152,7 +94,8 @@ export async function processContract(
     retrieve: retrieveRegulations,
     analyze: analyzeClauseWithGemini,
     progress: updateProgress
-  }
+  },
+  leaseToken?: string
 ) {
   console.log(`// [Queue] Processing Contract ID: ${contractId}`);
   let persistenceStarted = false;
@@ -245,7 +188,8 @@ export async function processContract(
     // One transaction replaces old partial rows and commits the status/score.
     // This requires the reviewed source migration before deploying this API.
     persistenceStarted = true;
-    const { error: commitError } = await deps.store.rpc('commit_contract_analysis', {
+    const { error: commitError } = await deps.store.rpc(leaseToken ? 'complete_contract_job' : 'commit_contract_analysis', {
+      ...(leaseToken ? { p_lease_token: leaseToken } : {}),
       p_contract_id: contractId,
       p_clauses: clausesToSave,
       p_overall_score: overallScore
@@ -264,8 +208,9 @@ export async function processContract(
     // A transport failure may follow a successful transaction. Do not turn an
     // unknown commit into a terminal failure or invite a duplicate submission.
     if (deps.store && !persistenceStarted) {
-      const { error: statusError } = await deps.store.from('contracts').update({ status: 'failed' })
-        .eq('id', contractId).eq('status', 'processing');
+      const { error: statusError } = leaseToken
+        ? await deps.store.rpc('fail_contract_job', { p_contract_id: contractId, p_lease_token: leaseToken })
+        : await deps.store.from('contracts').update({ status: 'failed' }).eq('id', contractId).eq('status', 'processing');
       if (statusError) console.error('Failed analysis status could not be persisted; reconciliation is required.');
     }
   }

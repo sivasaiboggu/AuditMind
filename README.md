@@ -357,3 +357,25 @@ re-delivery, concurrent callers, role privileges, two-owner RLS and write denial
 The harness excludes pgvector/corpus and uses synthetic auth.uid, so real Supabase
 Auth/Storage and full migration rollout checks remain open. See the verification
 document for dependencies and exact limits; do not deploy this API on an old schema.
+
+
+### Durable job ledger (supersedes Redis/memory queue descriptions above)
+
+Contract metadata now includes its MIME type. A database trigger inserts a private
+job row in the same transaction, closing the metadata-to-enqueue crash window.
+The worker claims a two-minute lease, downloads the original private Storage file,
+renews while processing, and commits output plus job completion in one transaction.
+Expired leases are reclaimed; stale workers cannot commit or fail a newer attempt.
+Redis and in-memory queue delivery are no longer used. Existing Redis payloads are
+not automatically migrated or replayed. Old processing contracts without MIME/job
+metadata need an operator-reviewed inventory, not guessed file types or blind retry.
+
+Required rollout order: verify and apply all reviewed additive migrations through
+`20261025000002_durable_contract_jobs.sql` before this API. Never deploy the API
+independently on the old schema. No live migration, backfill, replay or deployment
+has been performed. Disposable PostgreSQL tests cover the outbox, lease expiry and
+fencing, atomic completion, cleanup and persistence through an immediate restart.
+This does not verify real Storage downloads, Supabase/network behavior or provider
+quality. Transient download failures stay recoverable after expiry and need
+operational visibility; retries can repeat provider work, although result writes
+are fenced. Operators must review old jobs/files before any live rollout.

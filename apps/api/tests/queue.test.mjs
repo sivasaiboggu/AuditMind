@@ -85,3 +85,22 @@ test('ambiguous RPC commit stays for reconciliation instead of forcing failed st
  await processContract('synthetic','synthetic.txt','text/plain',Buffer.from('test'),deps);
  assert.deepEqual(effects.statuses,[]);assert.match(effects.progress.at(-1)[3],/may already have committed/);
 });
+
+const {runDurableJob}=await import('../dist/services/queue.js');
+test('durable worker downloads original storage bytes and passes fenced lease to processor',async()=>{
+ const calls=[];const store={rpc:async name=>{assert.equal(name,'claim_contract_job');return {data:[{contract_id:'synthetic',file_path:'synthetic.txt',mime_type:'text/plain',lease_token:'synthetic-lease'}],error:null};},storage:{from:()=>({download:async()=>({data:new Blob(['Synthetic original bytes']),error:null})})}};
+ assert.equal(await runDurableJob(store,async(...args)=>calls.push(args)),true);
+ assert.equal(calls[0][3].toString(),'Synthetic original bytes');assert.equal(calls[0][5],'synthetic-lease');
+});
+test('durable worker leaves transient download failure recoverable after lease expiry',async()=>{
+ let processed=false;const store={rpc:async()=>({data:[{contract_id:'synthetic'}],error:null}),storage:{from:()=>({download:async()=>({data:null,error:new Error('unavailable')})})}};
+ assert.equal(await runDurableJob(store,async()=>{processed=true;}),true);assert.equal(processed,false);
+});
+test('empty durable poll does not download or process',async()=>{
+ assert.equal(await runDurableJob({rpc:async()=>({data:[],error:null})}),false);
+});
+test('fenced processor uses job commit and job failure rather than unfenced writes',async()=>{
+ const {deps,effects}=fixture();const calls=[];deps.store.rpc=async(name,args)=>{calls.push([name,args]);return {error:null};};
+ await processContract('synthetic','synthetic.txt','text/plain',Buffer.from('test'),deps,'lease-a');assert.equal(calls[0][0],'complete_contract_job');assert.equal(calls[0][1].p_lease_token,'lease-a');
+ deps.classify=async()=>{throw new Error('synthetic');};calls.length=0;await processContract('synthetic','synthetic.txt','text/plain',Buffer.from('test'),deps,'lease-b');assert.equal(calls[0][0],'fail_contract_job');assert.equal(calls[0][1].p_lease_token,'lease-b');assert.deepEqual(effects.statuses,[]);
+});

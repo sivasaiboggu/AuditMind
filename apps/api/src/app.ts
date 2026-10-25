@@ -69,6 +69,7 @@ app.get('/health', async () => {
     timestamp: new Date().toISOString(),
     uptime: Math.round(process.uptime()),
     database: supabase ? 'configured, connectivity not checked' : 'not configured',
+    queue: 'database job ledger; schema and connectivity not checked',
     environment: process.env.NODE_ENV || 'development'
   };
 });
@@ -117,7 +118,7 @@ app.post('/contracts/upload', async (req, reply) => {
     .upload(filePath, buffer, { contentType: mimeType });
 
   if (sError) {
-    console.error('Supabase upload error:', sError);
+    console.error('Contract storage upload could not be confirmed.');
     return reply.status(500).send({ error: 'Failed to upload contract to storage' });
   }
 
@@ -128,6 +129,7 @@ app.post('/contracts/upload', async (req, reply) => {
       user_id: userId || null,
       name: fileName,
       file_path: filePath,
+      mime_type: mimeType,
       status: 'processing',
       overall_risk_score: 0
     });
