@@ -390,3 +390,14 @@ analysis failure and exhausted recovery without exposing raw provider errors.
 A lost heartbeat prevents further output/status writes; lease tokens remain the
 database commit fence. Disposable PostgreSQL tests verify backoff/cap behavior.
 No live service or database was changed, and no replay/admin endpoint is exposed.
+
+### Upload acceptance follow-through
+
+The upload page preserves server recovery IDs and pauses another upload after an
+ambiguous response or transport interruption, with a dashboard recovery action.
+Authentication failures before fetch are marked not-sent, not uncertain acceptance.
+Definite rejections remain retryable. Local validation and the picker now agree
+on nonempty PDF/DOCX/TXT and the 15MB limit. The dashboard has an explicit Refresh
+action for current owned status when realtime delivery is unavailable, without
+adding account polling. Synthetic desktop/390px screenshots and regression tests
+cover the uncertain-response state; no real upload or provider call was performed.

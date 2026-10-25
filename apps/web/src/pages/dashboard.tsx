@@ -19,6 +19,7 @@ export default function Dashboard() {
   const { contracts, setContracts, setActiveContract } = useContractStore();
   const [notification, setNotification] = useState<string | null>(null);
 
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const listRead = useRef(0);
   const mounted = useRef(false);
 
@@ -58,7 +59,7 @@ export default function Dashboard() {
       ++listRead.current;
       if (channel) void supabase?.removeChannel(channel);
     };
-  }, [user?.id, setContracts]);
+  }, [user?.id, setContracts, refreshVersion]);
 
   // Compute stats based on active database entries
   const completedContracts = contracts.filter(c => c.status === 'completed');
@@ -330,9 +331,10 @@ export default function Dashboard() {
             <h2 className="font-mono text-sm font-bold uppercase tracking-wider text-text-primary">
               Contracts
             </h2>
-            <span className="font-mono text-xs text-text-secondary">
-              [{contracts.length} loaded]
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="font-mono text-xs text-text-secondary">[{contracts.length} loaded]</span>
+              <button onClick={() => setRefreshVersion(value => value + 1)} className="px-3 py-2 min-h-11 text-xs font-mono border border-white/10 rounded text-accent-cyan">Refresh</button>
+            </div>
           </div>
 
           {contracts.length === 0 ? (

@@ -18,6 +18,7 @@ export default function UploadPage() {
   const [error, setError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
+  const acceptanceUnknown = useRef(false);
   const uploadEpoch = useRef(0);
   const uploadTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const uploadAbort = useRef<AbortController | null>(null);
@@ -48,7 +49,11 @@ export default function UploadPage() {
   };
 
   const handleUploadFile = async (file: File) => {
-    if (useContractStore.getState().isAnalyzing) return;
+    if (useContractStore.getState().isAnalyzing || acceptanceUnknown.current) return;
+    if (file.size === 0 || file.size > 15 * 1024 * 1024 || !/\.(pdf|docx|txt)$/i.test(file.name)) {
+      setError('Choose a nonempty PDF, DOCX or TXT file no larger than 15MB.');
+      return;
+    }
     const epoch = ++uploadEpoch.current;
     const ownerCurrent = workspaceGuard();
     const current = () => uploadEpoch.current === epoch && ownerCurrent();
@@ -65,6 +70,8 @@ export default function UploadPage() {
 
     let timer: ReturnType<typeof setInterval> | null = null;
     let uploadPercent = 5;
+    let requestStarted = false;
+    let definiteRejection = false;
 
     try {
       // Smoothly animate the loading percentage during the network payload upload
@@ -86,6 +93,7 @@ export default function UploadPage() {
       formData.append('file', file);
 
       const query = '';
+      requestStarted = true;
       const response = await authenticatedFetch(`${API_URL}/contracts/upload${query}`, {
         method: 'POST',
         body: formData,
@@ -97,7 +105,11 @@ export default function UploadPage() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to upload file to backend server');
+        if (!current()) return;
+        definiteRejection = response.status < 500 && !['UPLOAD_ACCEPTANCE_UNKNOWN', 'QUEUE_ACCEPTANCE_UNKNOWN'].includes(errorData.code);
+        if (['UPLOAD_ROLLED_BACK', 'UPLOAD_CLEANUP_PENDING'].includes(errorData.code)) definiteRejection = true;
+        const reference = typeof errorData.contractId === 'string' ? ` Reference: ${errorData.contractId}.` : '';
+        throw new Error((errorData.error || 'Upload could not be confirmed.') + reference);
       }
 
       const contract = await response.json();
@@ -162,7 +174,10 @@ export default function UploadPage() {
       console.error('Contract upload could not be confirmed.');
       setIsAnalyzing(false);
       setProgress(null);
-      setError(err.message || 'Failed to ingest document file.');
+      if (requestStarted && !definiteRejection && !err.requestNotSent) {
+        acceptanceUnknown.current = true;
+        setError(`${err.message || 'Upload response was interrupted.'} Acceptance is uncertain. Do not upload again until you check the dashboard and retained file with an operator.`);
+      } else setError(err.message || 'The document was not accepted.');
     }
   };
 
@@ -221,6 +236,10 @@ export default function UploadPage() {
             </div>
           )}
 
+          {acceptanceUnknown.current && <div className="border border-risk-medium/30 p-4 rounded text-sm text-text-secondary space-y-3">
+            <p>Another upload is paused because the previous file may already be stored or queued.</p>
+            <button onClick={() => navigate('/dashboard')} className="px-4 py-2 min-h-11 rounded border border-accent-cyan/30 text-accent-cyan">Check dashboard</button>
+          </div>}
           <div
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
@@ -251,7 +270,8 @@ export default function UploadPage() {
               <label className="cursor-pointer group flex flex-col items-center gap-3">
                 <input
                   type="file"
-                  accept=".pdf,.docx"
+                  accept=".pdf,.docx,.txt"
+                  disabled={acceptanceUnknown.current}
                   onChange={handleFileChange}
                   className="hidden"
                 />
@@ -263,7 +283,7 @@ export default function UploadPage() {
                     Select contract document
                   </p>
                   <p className="text-xs text-text-secondary font-sans mt-1">
-                    Drag and drop PDF or DOCX file (Max 15MB)
+                    Drag and drop PDF, DOCX or TXT file (Max 15MB)
                   </p>
                 </div>
               </label>

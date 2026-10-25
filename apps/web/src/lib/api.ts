@@ -11,7 +11,10 @@ export async function accessToken(): Promise<string> {
 export async function authenticatedFetch(url: string, init: RequestInit = {}) {
   const current = workspaceGuard();
   const headers = new Headers(init.headers);
-  headers.set('Authorization', `Bearer ${await accessToken()}`);
+  let token: string;
+  try { token = await accessToken(); }
+  catch (error) { throw Object.assign(new Error(error instanceof Error ? error.message : 'Authentication unavailable.'), { requestNotSent: true }); }
+  headers.set('Authorization', `Bearer ${token}`);
   if (!current()) throw new Error('Account changed before request.');
   return fetch(url, { ...init, headers });
 }
