@@ -14,8 +14,8 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setView, onLogout }
   const { user } = useAuth();
 
   return (
-    <header className="glass-panel border-b border-white/5 px-6 py-4 flex items-center justify-between sticky top-0 z-50">
-      <div className="flex items-center gap-3">
+    <header className="glass-panel border-b border-white/5 px-4 sm:px-6 py-3 flex flex-wrap gap-3 items-center justify-between shrink-0 sticky top-0 z-50">
+      <div className="flex items-center gap-3 min-w-0">
         <div className="relative flex items-center justify-center w-10 h-10 rounded bg-background-base border border-accent-cyan/25 text-accent-cyan shadow-[0_0_15px_rgba(0,229,255,0.12)]">
           <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M12 22C12 22 20 18 20 12V5L12 2L4 5V12C4 18 12 22 12 22Z" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
@@ -32,10 +32,10 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setView, onLogout }
         </div>
       </div>
 
-      <nav className="flex items-center gap-2">
+      <nav className="flex items-center gap-2 order-3 w-full sm:order-none sm:w-auto">
         <button
           onClick={() => setView('dashboard')}
-          className={`px-4 py-2 rounded font-mono text-sm flex items-center gap-2 precise-transition ${
+          className={`px-3 py-2 min-h-11 rounded font-mono text-xs sm:text-sm flex items-center gap-2 precise-transition ${
             currentView === 'dashboard'
               ? 'text-accent-cyan bg-accent-cyan/10 border border-accent-cyan/20'
               : 'text-text-secondary hover:text-text-primary hover:bg-white/5 border border-transparent'
@@ -48,7 +48,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setView, onLogout }
         <button
           onClick={() => activeContract && setView('analyzer')}
           disabled={!activeContract}
-          className={`px-4 py-2 rounded font-mono text-sm flex items-center gap-2 precise-transition ${
+          className={`px-3 py-2 min-h-11 rounded font-mono text-xs sm:text-sm flex items-center gap-2 precise-transition ${
             !activeContract
               ? 'opacity-40 cursor-not-allowed text-text-muted border border-transparent'
               : currentView === 'analyzer'
@@ -57,7 +57,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setView, onLogout }
           }`}
         >
           <FileSearch className="w-4 h-4" />
-          Analyzer {activeContract && `[${activeContract.name.substring(0, 12)}...]`}
+          Analyzer
         </button>
       </nav>
 
@@ -81,7 +81,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setView, onLogout }
               />
             ) : (
               <div className="w-8 h-8 rounded-full bg-accent-cyan/10 border border-accent-cyan/30 flex items-center justify-center text-xs font-mono font-bold text-accent-cyan shadow-[0_0_10px_rgba(0,229,255,0.1)]">
-                {user.email[0].toUpperCase()}
+                {(user.email[0] || '?').toUpperCase()}
               </div>
             )}
           </div>

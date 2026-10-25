@@ -32,7 +32,7 @@ export async function getEmbedding(text: string): Promise<number[] | null> {
       values.every(v => typeof v === 'number' && Number.isFinite(v)) &&
       values.some(v => v !== 0) ? values : null;
   } catch (error) {
-    console.error('Failed to retrieve Gemini embedding:', error);
+    console.error('Regulatory embedding could not be retrieved.');
     return null;
   }
 }

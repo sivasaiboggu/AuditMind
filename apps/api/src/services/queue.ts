@@ -47,7 +47,7 @@ class MemoryQueue {
       try {
         await processContract(job.contractId, job.filePath, job.mimeType, job.buffer);
       } catch (err) {
-        console.error('// Memory queue job processing failed:', err);
+        console.error('Memory queue job could not be processed.');
       }
     }
     
@@ -78,7 +78,7 @@ export async function initializeQueue() {
     // Start background polling loop for jobs
     startQueueWorker();
   } catch (error) {
-    console.warn('// Failed to initialize Upstash REST client, falling back to Memory Queue:', error);
+    console.warn('Upstash initialization failed; memory queue is not durable.');
   }
 }
 
@@ -124,7 +124,7 @@ async function startQueueWorker() {
           await processContract(job.contractId, job.filePath, job.mimeType, buffer);
         }
       } catch (err) {
-        console.error('// [Worker] Upstash polling job processing error:', err);
+        console.error('Queue worker request failed.');
       }
     }
     
@@ -217,7 +217,7 @@ export async function processContract(
             risk_score: score
           };
         } catch (err) {
-          console.error(`// Error processing clause "${item.title}":`, err);
+          console.error('Clause processing failed.');
           // A service failure is not a finding of low legal risk. Reject the
           // contract run instead of saving a fabricated zero-risk clause.
           throw new Error('Clause analysis was incomplete.');
@@ -255,7 +255,7 @@ export async function processContract(
     deps.progress(contractId, 'completed', 100, 'Compliance inspection fully generated.');
     console.log(`// [Queue] Completed processing contract ${contractId} successfully.`);
   } catch (error) {
-    console.error(`// [Queue] Processing failed for contract ${contractId}:`, error);
+    console.error('Contract processing failed.');
     deps.progress(contractId, 'failed', 0, 'Contract analysis did not finish. Review is required before relying on any results.');
     
     if (deps.store) {

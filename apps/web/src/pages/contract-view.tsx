@@ -1,6 +1,6 @@
 import { authenticatedFetch, sendAuthenticated } from '../lib/api';
 import { workspaceGuard } from '../lib/workspace-guard';
-import { chatHistory, interruptChat } from '../lib/chat-stream';
+import { chatHistory, interruptChat, INCOMPLETE_ANSWER } from '../lib/chat-stream';
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useContractStore } from '../store/contractStore';
@@ -26,6 +26,8 @@ export default function ContractView() {
     setChatMessages
   } = useContractStore();
 
+  const [clausesLoading, setClausesLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedClause, setSelectedClause] = useState<Clause | null>(null);
   const [activeTab, setActiveTab] = useState<'analysis' | 'chat'>('analysis');
   const [chatInput, setChatInput] = useState('');
@@ -50,6 +52,8 @@ export default function ContractView() {
     const ownerCurrent = workspaceGuard();
     const currentOwner = () => !disposed && ownerCurrent();
     setSelectedClause(null);
+    setClausesLoading(true);
+    setLoadError(null);
     setChatInput('');
     setIsChatGenerating(false);
     setWsConnected(false);
@@ -78,11 +82,13 @@ export default function ContractView() {
         if (!currentOwner()) return;
         setActiveClauses(clauses);
         setSelectedClause(clauses[0] || null);
+        setClausesLoading(false);
       } catch {
         if (currentOwner()) {
           setActiveClauses([]);
           setSelectedClause(null);
-          console.error('Contract context could not be loaded.');
+          setClausesLoading(false);
+          setLoadError('Contract details could not be loaded. Return to the dashboard or reload to try again.');
         }
       }
     };
@@ -226,12 +232,12 @@ export default function ContractView() {
   };
 
   return (
-    <div className="h-screen bg-background-base flex flex-col overflow-hidden">
-      <Navbar currentView="analyzer" setView={(v) => navigate(v === 'dashboard' ? '/dashboard' : '/upload')} onLogout={handleLogout} />
+    <div className="h-screen h-[100dvh] bg-background-base flex flex-col overflow-hidden">
+      <Navbar currentView="analyzer" setView={(v) => navigate(v === 'dashboard' ? '/dashboard' : `/contract/${id}`)} onLogout={handleLogout} />
       
       {/* Sub Header */}
-      <div className="bg-background-panel border-b border-white/5 px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <div className="bg-background-panel border-b border-white/5 px-4 sm:px-6 py-3 flex flex-wrap gap-3 items-center justify-between shrink-0">
+        <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={() => navigate('/dashboard')}
             className="p-1.5 rounded hover:bg-white/5 border border-transparent hover:border-white/10 text-text-secondary hover:text-text-primary precise-transition"
@@ -239,7 +245,7 @@ export default function ContractView() {
             <ArrowLeft className="w-4 h-4" />
           </button>
           <div>
-            <h2 className="text-sm font-mono font-bold text-text-primary uppercase tracking-wide">
+            <h2 className="text-sm font-mono font-bold text-text-primary uppercase tracking-wide break-all">
               {activeContract?.name || 'ANALYZER MODE'}
             </h2>
           </div>
@@ -259,9 +265,9 @@ export default function ContractView() {
       </div>
 
       {/* Side by Side */}
-      <div className="flex-grow flex overflow-hidden">
+      <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden">
         {/* Left Side */}
-        <div className="w-1/2 border-r border-white/5 flex flex-col bg-background-base overflow-hidden">
+        <div className="w-full md:w-1/2 min-w-0 h-[32%] md:h-auto shrink-0 border-b md:border-r border-white/5 flex flex-col bg-background-base overflow-hidden">
           <div className="border-b border-white/5 p-4 flex items-center gap-2 bg-white/1">
             <FileText className="w-4 h-4 text-accent-cyan" />
             <span className="text-xs font-mono font-bold text-text-secondary uppercase">
@@ -272,7 +278,7 @@ export default function ContractView() {
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             {activeClauses.length === 0 ? (
               <div className="p-12 text-center text-text-muted font-mono text-xs animate-pulse">
-                Analyzing contract clauses...
+                {clausesLoading ? 'Loading contract clauses...' : loadError || (activeContract?.status === 'processing' ? 'Analysis is still processing. Return to the dashboard for status updates.' : activeContract?.status === 'failed' ? 'Analysis failed. No completed clause review is available.' : 'No clause results are available for this contract.')}
               </div>
             ) : (
               activeClauses.map((clause) => (
@@ -303,12 +309,12 @@ export default function ContractView() {
         </div>
 
         {/* Right Side — Tab Layout */}
-        <div className="w-1/2 flex flex-col bg-background-panel/50 overflow-hidden">
+        <div className="w-full md:w-1/2 min-w-0 min-h-0 flex-1 flex flex-col bg-background-panel/50 overflow-hidden">
           {selectedClause ? (
-            <div className="flex-grow flex flex-col overflow-hidden">
+            <div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
 
               {/* Tab Bar */}
-              <div className="border-b border-white/5 flex items-center bg-background-panel/80 px-4 gap-1 pt-2 flex-shrink-0">
+              <div className="border-b border-white/5 flex flex-wrap items-center bg-background-panel/80 px-2 sm:px-4 gap-1 pt-2 flex-shrink-0">
                 <button
                   onClick={() => setActiveTab('analysis')}
                   className={`px-4 py-2 text-xs font-mono font-bold uppercase tracking-wider rounded-t border-b-2 precise-transition flex items-center gap-1.5 ${
@@ -352,8 +358,8 @@ export default function ContractView() {
 
               {/* Analysis Tab */}
               {activeTab === 'analysis' && (
-                <div className="flex-grow overflow-y-auto p-6 space-y-5">
-                  <div className="flex justify-between items-start border-b border-white/5 pb-4">
+                <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-5 break-words">
+                  <div className="flex flex-wrap gap-3 justify-between items-start border-b border-white/5 pb-4">
                     <div>
                       <span className="font-mono text-xs text-accent-cyan uppercase tracking-widest block mb-1">
                         Clause Analysis
@@ -418,7 +424,7 @@ export default function ContractView() {
 
               {/* Chat Tab — full height */}
               {activeTab === 'chat' && (
-                <div className="flex-grow flex flex-col overflow-hidden">
+                <div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
                   {/* Chat context pill */}
                   <div className="px-4 py-2 flex-shrink-0 border-b border-white/5 bg-background-base/20">
                     <div className="flex items-center gap-2 text-[10px] font-mono text-text-muted">
@@ -439,7 +445,7 @@ export default function ContractView() {
                   </div>
 
                   {/* Messages scroll area — takes all available height */}
-                  <div className="flex-grow overflow-y-auto p-4 space-y-3">
+                  <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 break-words">
                     {/* Welcome bubble */}
                     <div className="flex items-start gap-2.5">
                       <div className="w-6 h-6 rounded-full bg-accent-cyan/10 border border-accent-cyan/20 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -452,7 +458,7 @@ export default function ContractView() {
                     </div>
 
                     {chatMessages.map((msg) => {
-                      const isLocalSearch = msg.message.includes('Local Search Mode') || msg.message.includes('⚠️') || msg.message.includes('⚠');
+                      const isLocalSearch = msg.message.startsWith(INCOMPLETE_ANSWER);
                       const isUser = msg.sender === 'user';
                       return (
                         <div key={msg.id} className={`flex items-end gap-2.5 ${isUser ? 'flex-row-reverse' : ''}`}>
@@ -476,10 +482,10 @@ export default function ContractView() {
                               <span className={`block text-[9px] font-mono mb-1.5 uppercase tracking-wider ${
                                 isLocalSearch ? 'text-amber-400 font-bold' : 'text-text-muted'
                               }`}>
-                                {isLocalSearch ? '⚠ Local Search Mode' : 'AuditMind'}
+                                {isLocalSearch ? 'Incomplete response' : 'AuditMind'}
                               </span>
                             )}
-                            <div className="whitespace-pre-line select-text">{msg.message}</div>
+                            <div className="whitespace-pre-line select-text break-words">{msg.message}</div>
                             {/* Hover copy button */}
                             <button
                               onClick={() => handleCopy(msg.id, msg.message)}
@@ -520,7 +526,7 @@ export default function ContractView() {
                         onChange={(e) => setChatInput(e.target.value)}
                         placeholder={isChatGenerating ? 'AuditMind is thinking...' : "Ask a question about this contract..."}
                         disabled={isChatGenerating}
-                        className="flex-grow bg-background-base border border-white/10 outline-none rounded-xl py-3 px-4 text-sm font-sans text-text-primary placeholder:text-text-muted/50 focus:border-accent-cyan/50 focus:ring-1 focus:ring-accent-cyan/20 precise-transition disabled:opacity-50"
+                        className="min-w-0 flex-1 bg-background-base border border-white/10 outline-none rounded-xl py-3 px-4 text-sm font-sans text-text-primary placeholder:text-text-muted/50 focus:border-accent-cyan/50 focus:ring-1 focus:ring-accent-cyan/20 precise-transition disabled:opacity-50"
                       />
                       <button
                         type="submit"
@@ -532,7 +538,7 @@ export default function ContractView() {
                       </button>
                     </form>
                     <p className="text-[10px] text-text-muted/40 font-mono mt-2 text-center">
-                      {wsConnected ? 'Connected · Powered by AuditMind RAG' : 'Connecting to AI service...'}
+                      {wsConnected ? 'Connected · AI output needs legal review' : 'Offline · Reload to reconnect'}
                     </p>
                   </div>
                 </div>

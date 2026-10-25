@@ -1,12 +1,4 @@
--- Drop existing tables to ensure clean rebuild
-DROP TABLE IF EXISTS public.chat_messages CASCADE;
-DROP TABLE IF EXISTS public.chat_sessions CASCADE;
-DROP TABLE IF EXISTS public.risk_reports CASCADE;
-DROP TABLE IF EXISTS public.clauses CASCADE;
-DROP TABLE IF EXISTS public.contracts CASCADE;
-DROP TABLE IF EXISTS public.profiles CASCADE;
-DROP TABLE IF EXISTS public.regulation_corpus CASCADE;
-
+-- Fresh-project baseline. Existing databases need the reviewed additive migrations.
 -- Enable extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "vector";
@@ -97,24 +89,24 @@ ALTER TABLE public.regulation_corpus ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can view own profiles" ON public.profiles FOR SELECT USING (auth.uid() = id);
 CREATE POLICY "Users can update own profiles" ON public.profiles FOR UPDATE USING (auth.uid() = id);
 
-CREATE POLICY "Users can view own contracts" ON public.contracts FOR SELECT USING (auth.uid() = user_id OR user_id IS NULL);
-CREATE POLICY "Users can insert own contracts" ON public.contracts FOR INSERT WITH CHECK (auth.uid() = user_id OR user_id IS NULL);
-CREATE POLICY "Users can delete own contracts" ON public.contracts FOR DELETE USING (auth.uid() = user_id OR user_id IS NULL);
+CREATE POLICY "Users can view own contracts" ON public.contracts FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own contracts" ON public.contracts FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can delete own contracts" ON public.contracts FOR DELETE USING (auth.uid() = user_id);
 
 CREATE POLICY "Users can view clauses of own contracts" ON public.clauses FOR SELECT 
-  USING (EXISTS (SELECT 1 FROM public.contracts WHERE public.contracts.id = public.clauses.contract_id AND (public.contracts.user_id = auth.uid() OR public.contracts.user_id IS NULL)));
+  USING (EXISTS (SELECT 1 FROM public.contracts WHERE public.contracts.id = public.clauses.contract_id AND (public.contracts.user_id = auth.uid())));
 
 CREATE POLICY "Users can view reports of own contracts" ON public.risk_reports FOR SELECT
-  USING (EXISTS (SELECT 1 FROM public.contracts WHERE public.contracts.id = public.risk_reports.contract_id AND (public.contracts.user_id = auth.uid() OR public.contracts.user_id IS NULL)));
+  USING (EXISTS (SELECT 1 FROM public.contracts WHERE public.contracts.id = public.risk_reports.contract_id AND (public.contracts.user_id = auth.uid())));
 
 CREATE POLICY "Users can view own chat sessions" ON public.chat_sessions FOR SELECT
-  USING (EXISTS (SELECT 1 FROM public.contracts WHERE public.contracts.id = public.chat_sessions.contract_id AND (public.contracts.user_id = auth.uid() OR public.contracts.user_id IS NULL)));
+  USING (EXISTS (SELECT 1 FROM public.contracts WHERE public.contracts.id = public.chat_sessions.contract_id AND (public.contracts.user_id = auth.uid())));
 
 CREATE POLICY "Users can view messages of own sessions" ON public.chat_messages FOR SELECT
   USING (EXISTS (
     SELECT 1 FROM public.chat_sessions 
     JOIN public.contracts ON public.contracts.id = public.chat_sessions.contract_id 
-    WHERE public.chat_sessions.id = public.chat_messages.session_id AND (public.contracts.user_id = auth.uid() OR public.contracts.user_id IS NULL)
+    WHERE public.chat_sessions.id = public.chat_messages.session_id AND (public.contracts.user_id = auth.uid())
   ));
 
 CREATE POLICY "Allow public read access to regulation_corpus" ON public.regulation_corpus FOR SELECT USING (true);

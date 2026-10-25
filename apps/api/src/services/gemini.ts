@@ -9,17 +9,6 @@ export interface ClauseAnalysisResult {
 }
 
 /**
- * Fallback static templates when Gemini API is unconfigured.
- */
-function getFallbackAnalysis(_title: string, text: string): ClauseAnalysisResult {
-  // No inference about the clause can be made from its title or a fixed template.
-  return {
-    explanation: 'Automated explanation is unavailable. This clause has not been assessed by the explanation service. Review the original text with qualified counsel; no legal finding or safer wording is provided.',
-    suggestedRedline: text
-  };
-}
-
-/**
  * Generate clause explanation and suggested redline.
  * Uses gemini-2.5-pro or gemini-2.5-flash for structured legal drafting.
  */
@@ -29,7 +18,7 @@ export async function analyzeClauseWithGemini(
   regulationContext: string
 ): Promise<ClauseAnalysisResult> {
   if (!GEMINI_API_KEY) {
-    return getFallbackAnalysis(title, clauseText);
+    throw new Error('Clause explanation service is not configured.');
   }
 
   try {
@@ -65,13 +54,12 @@ Do not include markdown tags like \`\`\`json. Return only raw JSON.
 
     const textResponse = response.data.candidates[0].content.parts[0].text;
     const parsed = JSON.parse(textResponse);
-    return {
-      explanation: typeof parsed.explanation === 'string' && parsed.explanation.trim() ? parsed.explanation : getFallbackAnalysis(title, clauseText).explanation,
-      suggestedRedline: typeof parsed.suggestedRedline === 'string' && parsed.suggestedRedline.trim() ? parsed.suggestedRedline : clauseText
-    };
+    if (typeof parsed.explanation !== 'string' || !parsed.explanation.trim() ||
+        typeof parsed.suggestedRedline !== 'string') throw new Error('Invalid clause explanation response.');
+    return { explanation: parsed.explanation, suggestedRedline: parsed.suggestedRedline };
   } catch (err) {
-    console.error('Gemini API call failed, falling back to static analytics:', err);
-    return getFallbackAnalysis(title, clauseText);
+    console.error('Clause explanation provider failed.');
+    throw new Error('Clause explanation service did not return a valid assessment.');
   }
 }
 
@@ -268,7 +256,7 @@ Do not include markdown tags like \`\`\`json. Return only raw JSON.
       message: parsed.message || 'Please upload a valid legal contract.'
     };
   } catch (err) {
-    console.error('Gemini contract validation failed, falling back to heuristic:', err);
+    console.error('Contract validation provider failed.');
     return validateContractHeuristic(text);
   }
 }

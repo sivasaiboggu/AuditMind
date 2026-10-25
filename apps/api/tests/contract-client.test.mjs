@@ -12,7 +12,7 @@ function routeEffect(fetch,ownerCurrent=()=>true){
  const start=source.indexOf('  useEffect(() => {',source.indexOf('// Scope each load'));
  const end=source.indexOf('\n\n  // 2. Configure',start);let effect;const calls=[];
  const context={user:{id:'owner'},workspaceGuard:()=>ownerCurrent,useEffect:fn=>effect=fn,id:'a',useContractStore:{getState:()=>({contracts:[{id:'a'}]})},authenticatedFetch:fetch,API_URL:'synthetic',console:{error(){}},navigate:x=>calls.push(['navigate',x])};
- for(const name of ['setSelectedClause','setChatInput','setIsChatGenerating','setWsConnected','setCopiedId','setActiveTab','setActiveContract','setActiveClauses','setContracts'])context[name]=value=>calls.push([name,value]);
+ for(const name of ['setClausesLoading','setLoadError','setSelectedClause','setChatInput','setIsChatGenerating','setWsConnected','setCopiedId','setActiveTab','setActiveContract','setActiveClauses','setContracts'])context[name]=value=>calls.push([name,value]);
  vm.runInNewContext(ts.transpileModule(source.slice(start,end),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText,context);return {cleanup:effect(),calls};
 }
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
@@ -25,7 +25,7 @@ test('cleanup during JSON parsing also blocks late context writes',async()=>{
  resolve([{id:'private-a'}]);await tick();assert.equal(calls.length,count);
 });
 test('current empty clause response resets selection instead of retaining stale clause',async()=>{
- const {calls}=routeEffect(async()=>({ok:true,json:async()=>[]}));await tick();assert.equal(calls.at(-1)[0],'setSelectedClause');assert.equal(calls.at(-1)[1],null);
+ const {calls}=routeEffect(async()=>({ok:true,json:async()=>[]}));await tick();assert.ok(calls.some(([name,value])=>name==='setSelectedClause' && value===null));assert.deepEqual(calls.at(-1),['setClausesLoading',false]);
 });
 test('account switch clears all private workspace data',()=>{
  const s=store();s.setState({user:{id:'a'},contracts:[{id:'private'}],activeContract:{id:'a'},chatMessages:[{message:'private'}],activeClauses:[{id:'private'}],isAnalyzing:true});

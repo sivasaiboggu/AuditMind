@@ -182,7 +182,7 @@ export default function UploadPage() {
 
   return (
     <div className="min-h-screen bg-background-base flex flex-col">
-      <Navbar currentView="analyzer" setView={(v) => navigate(v === 'dashboard' ? '/dashboard' : '/upload')} onLogout={handleLogout} />
+      <Navbar currentView="analyzer" setView={(v) => navigate(v === 'dashboard' ? '/dashboard' : useContractStore.getState().activeContract ? `/contract/${useContractStore.getState().activeContract!.id}` : '/upload')} onLogout={handleLogout} />
       
       <main className="flex-grow max-w-3xl mx-auto px-6 py-12 w-full flex flex-col justify-center">
         <div className="mb-6 flex items-center gap-2">

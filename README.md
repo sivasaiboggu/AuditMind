@@ -38,7 +38,8 @@ The setup command uses `py -3` on Windows and `python3` elsewhere. Set the `PYTH
 environment variable to a Python executable path when using a different installation.
 
 ### 2. Configure Environment Variables
-Create an `.env` file in the root directory (and copy it to `/apps/api/.env` and `/apps/web/.env`):
+Put server variables in `apps/api/.env` and only public `VITE_` variables in
+`apps/web/.env`. Do not copy server secrets into the web environment:
 
 ```env
 PORT=3000
@@ -55,14 +56,12 @@ ML_SERVICE_URL=http://localhost:8000
 ```
 
 ### 3. Setup Database Schema
-**Warning: the initial schema script contains `DROP TABLE` statements. Use it only
-in a new disposable Supabase project, never against existing data. Review every
-later migration separately. Back up existing projects and design a non-destructive
-migration before making changes.** No production migration has been run.
-
-For a new disposable project only:
-1. Review the contents of [`supabase/migrations/20240101000000_init.sql`](supabase/migrations/20240101000000_init.sql).
-2. Run them in your Supabase project to build the `contracts`, `clauses`, and RLS policy configurations.
+The source baseline no longer drops tables, and later migrations no longer add
+permissive private-table policies or conflict with the baseline UUID schema.
+Use the ordered migrations only in a new disposable project first. Existing
+projects need a schema and policy inventory, backup and reviewed additive rollout,
+not a blind replay of the baseline. See [database verification](docs/DATABASE-VERIFICATION.md).
+No live database migration or policy verification has been performed.
 
 ---
 
@@ -304,7 +303,7 @@ Logout clears workspace state locally before the remote sign-out. Configured
 Supabase auth never restores a demo localStorage identity and rejects demo login
 bypass; demo login remains available only without configured auth. Six isolated
 auth/store regressions cover these transitions. This is not full cross-account
-isolation proof: existing dashboard request races, live auth/RLS behavior and
+isolation proof: live auth/RLS behavior and
 other asynchronous consumers still need their own checks.
 
 ### Client ownership and lifecycle verification
@@ -318,3 +317,21 @@ back to the dashboard rather than implying that the server job was cancelled.
 The regression suite exercises these with synthetic sessions, deferred responses
 and sockets. It is not evidence of real Supabase sign-in, RLS, Storage, Redis
 recovery, provider accuracy or deployed browser isolation.
+
+
+### October 25 remaining-issues review
+
+The contract screen now stacks its clause and detail panels on narrow viewports;
+synthetic desktop and 390px browser checks found no horizontal overflow. Navigation
+returns to the active contract instead of the upload page. Empty or failed clause
+loads no longer imply analysis is still running, and a completed analysis is labeled
+ANALYZED rather than VERIFIED. Offline explanation calls now fail the pipeline
+instead of completing with unassessed fallback text. Partial clause rows are not
+served by the API while their contract is incomplete.
+
+Database source policies and migration consistency were repaired and all four SQL
+files passed PostgreSQL grammar parsing. This is not a database execution test.
+The rollout gate and actual two-user checks are in `docs/DATABASE-VERIFICATION.md`.
+No live policies, Storage bucket, credentials, deployments or provider settings
+were changed. Durable queue recovery, live auth/RLS/Storage/Redis integration and
+legal/corpus evaluation remain unfinished, so this is not an all-fixed release.

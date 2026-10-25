@@ -255,3 +255,9 @@ test('completed owner chat with bounded history reaches provider once',async()=>
     const [raw]=await reply;assert.equal(JSON.parse(raw.toString()).type,'chat_end');assert.equal(effects.chats,1);
   }finally{ws?.terminate();await app.close();}
 });
+
+
+test('partial stored clauses remain unavailable while contract processing or failed',async()=>{
+ const {app}=await fixture({processing:true});
+ try { const response=await app.inject({url:'/contracts/contract-a/clauses',headers:headers('user-a')});assert.equal(response.statusCode,409);assert.doesNotMatch(response.body,/Synthetic contract text/); } finally {await app.close();}
+});

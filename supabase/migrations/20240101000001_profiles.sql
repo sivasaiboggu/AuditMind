@@ -10,9 +10,12 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 -- Enable Row Level Security
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
--- Configure RLS Policies
-CREATE POLICY "Allow public read access to profiles" ON public.profiles
-  FOR SELECT USING (true);
+-- The earlier baseline may already have created this table.
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+
+-- Configure owner-only profile reads.
+CREATE POLICY "Allow owner read access to profiles" ON public.profiles
+  FOR SELECT USING (auth.uid() = id);
 
 CREATE POLICY "Allow users to update their own profile" ON public.profiles
   FOR UPDATE USING (auth.uid() = id);
@@ -30,7 +33,7 @@ BEGIN
   );
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
 -- Connect trigger to auth.users table
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;

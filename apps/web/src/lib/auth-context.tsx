@@ -59,8 +59,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return () => { ++authEpoch.current; };
     }
     const initialEpoch = ++authEpoch.current;
-    void supabase.auth.getSession().then(({ data: { session } }) => {
+    void supabase.auth.getSession().then(({ data: { session }, error }) => {
       if (disposed || authEpoch.current !== initialEpoch) return;
+      if (error) { applyUser(null); setLoading(false); return; }
       if (session?.user) void syncProfile(session.user, initialEpoch);
       else { applyUser(null); setLoading(false); }
     }).catch(() => {
@@ -101,14 +102,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const verifyOTP = async (email: string, code: string) => {
     if (!supabase) throw new Error('Supabase client not initialized');
+    const epoch = ++authEpoch.current;
     const { data, error } = await supabase.auth.verifyOtp({
       email,
       token: code,
       type: 'email'
     });
     if (error) throw error;
+    if (epoch !== authEpoch.current) return;
     if (data.user) {
-      await syncProfile(data.user, ++authEpoch.current);
+      await syncProfile(data.user, epoch);
     }
   };
 
@@ -131,7 +134,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     try { localStorage.removeItem('auditmind_user'); } catch {}
     if (supabase) {
-      await supabase.auth.signOut();
+      const { error } = await supabase.auth.signOut();
+      if (error) throw new Error('Local workspace cleared, but remote sign-out failed. Sign out again before using a shared device.');
     }
   };
 

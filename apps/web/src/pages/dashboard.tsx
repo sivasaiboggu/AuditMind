@@ -118,7 +118,7 @@ export default function Dashboard() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'completed':
-        return <span className="text-[10px] font-mono px-2 py-0.5 rounded border border-risk-low/30 text-risk-low bg-risk-low/5">VERIFIED</span>;
+        return <span className="text-[10px] font-mono px-2 py-0.5 rounded border border-risk-low/30 text-risk-low bg-risk-low/5">ANALYZED</span>;
       case 'processing':
         return <span className="text-[10px] font-mono px-2 py-0.5 rounded border border-accent-cyan/30 text-accent-cyan bg-accent-cyan/5 animate-pulse">ANALYZING</span>;
       case 'failed':
@@ -167,7 +167,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-background-base flex flex-col">
-      <Navbar currentView="dashboard" setView={(v) => navigate(v === 'dashboard' ? '/dashboard' : '/upload')} onLogout={handleLogout} />
+      <Navbar currentView="dashboard" setView={(v) => navigate(v === 'dashboard' ? '/dashboard' : useContractStore.getState().activeContract ? `/contract/${useContractStore.getState().activeContract!.id}` : '/upload')} onLogout={handleLogout} />
       
       <main className="flex-grow max-w-7xl mx-auto px-6 py-8 space-y-8 w-full">
         {/* Real-time Notifications */}

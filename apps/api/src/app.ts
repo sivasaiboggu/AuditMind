@@ -241,14 +241,14 @@ app.get('/contracts/:id/clauses', async (req, reply) => {
     return reply.status(500).send({ error: 'Supabase database client is not configured.' });
   }
 
-  if (!await ownedContract(supabase, id, req.authenticatedUserId)) {
-    return reply.code(404).send({ error: 'Contract not found.' });
-  }
+  const contract = await ownedContract(supabase, id, req.authenticatedUserId);
+  if (!contract) return reply.code(404).send({ error: 'Contract not found.' });
+  if (contract.status !== 'completed') return reply.code(409).send({ error: 'Completed clause results are not available.' });
 
   const { data, error } = await supabase
     .from('clauses')
     .select('*')
-    .eq('contract_id', id);
+    .eq('contract_id', id).order('number', { ascending: true });
 
   if (error) return reply.status(500).send({ error: 'The database request could not be completed.' });
   return data.map(c => ({
