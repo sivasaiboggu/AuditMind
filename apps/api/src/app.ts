@@ -14,6 +14,7 @@ export interface AppDependencies {
   initialize?: () => Promise<void>;
   enqueue?: typeof enqueueContractJob;
   streamChat?: typeof streamChatWithGemini;
+  registerProgress?: typeof setProgressListener;
 }
 
 /** Build the real routes without listening, allowing isolated integration tests. */
@@ -27,7 +28,7 @@ const app = fastify({ logger: true });
 installContractAuth(app, supabase);
 
 // Registry of active WS clients by contract ID subscription
-const progressSubscriptions = new Map<string, any>();
+const progressSubscriptions = new Map<string, Set<any>>();
 
 // Start Queue Service
 await (deps.initialize || initializeQueue)();
@@ -42,15 +43,15 @@ await app.register(cors, {
   credentials: true
 });
 await app.register(multipart, { limits: { fileSize: 15 * 1024 * 1024 } });
-await app.register(websocket);
+await app.register(websocket, { options: { maxPayload: 64 * 1024 } });
 
 // Register websocket progress listener
-setProgressListener((contractId, stage, percent, message) => {
-  const socket = progressSubscriptions.get(contractId);
-  if (socket && socket.readyState === 1) {
-    socket.send(JSON.stringify({
-      type: 'progress',
-      data: { contractId, stage, percent, message }
+(deps.registerProgress || setProgressListener)((contractId, stage, percent, message) => {
+  const sockets = progressSubscriptions.get(contractId);
+  if (!sockets) return;
+  for (const socket of sockets) {
+    if (socket.readyState === 1) socket.send(JSON.stringify({
+      type: 'progress', data: { contractId, stage, percent, message }
     }));
   }
 });
@@ -275,27 +276,41 @@ app.route({
   wsHandler: (conn, req) => {
     console.log('// New WebSocket client connection established.');
 
+    let principal: string | null = null;
+    let handling = false;
+    const send = (frame: unknown) => {
+      if (conn.socket.readyState === 1) conn.socket.send(JSON.stringify(frame));
+    };
     conn.socket.on('message', async (message: string) => {
+      // Async message callbacks otherwise overlap while token verification or
+      // provider streaming awaits, mixing tokens from two independent answers.
+      if (handling) { conn.socket.close(1008, 'Concurrent requests are not supported'); return; }
+      handling = true;
       try {
         const payload = JSON.parse(message);
 
         // Tokens travel inside frames, never in URLs or access logs.
         const userId = await verifiedUserId(supabase, payload?.accessToken);
+        if (principal && userId !== principal) { conn.socket.close(1008, 'Account changed'); return; }
         const contract = userId ? await ownedContract(supabase, payload?.contractId, userId) : null;
         if (!contract) {
-          conn.socket.send(JSON.stringify({ type: 'error', message: 'Authentication or contract access denied.' }));
+          send({ type: 'error', message: 'Authentication or contract access denied.' });
           conn.socket.close(1008, 'Access denied');
           return;
         }
+        principal = userId;
+        if (conn.socket.readyState !== 1) return;
         if (payload.type === 'subscribe') {
           const { contractId } = payload;
-          progressSubscriptions.set(contractId, conn.socket);
+          let sockets = progressSubscriptions.get(contractId);
+          if (!sockets) { sockets = new Set(); progressSubscriptions.set(contractId, sockets); }
+          sockets.add(conn.socket);
           console.log(`// WS: Client subscribed to updates for contract: ${contractId}`);
 
-          conn.socket.send(JSON.stringify({
+          send({
             type: 'subscribed',
             contractId
-          }));
+          });
 
           // Resolve race condition: Check if contract is already completed or failed in the DB
           if (supabase) {
@@ -307,7 +322,7 @@ app.route({
 
             if (contract) {
               if (contract.status === 'completed') {
-                conn.socket.send(JSON.stringify({
+                send({
                   type: 'progress',
                   data: {
                     contractId,
@@ -315,9 +330,9 @@ app.route({
                     percent: 100,
                     message: 'Compliance inspection fully generated.'
                   }
-                }));
+                });
               } else if (contract.status === 'failed') {
-                conn.socket.send(JSON.stringify({
+                send({
                   type: 'progress',
                   data: {
                     contractId,
@@ -325,7 +340,7 @@ app.route({
                     percent: 0,
                     message: 'Analysis pipeline failed.'
                   }
-                }));
+                });
               }
             }
           }
@@ -355,33 +370,32 @@ app.route({
 
           // 2. Query Gemini streaming response
           await streamChat(messages, clausesText, (token) => {
-            conn.socket.send(JSON.stringify({
+            send({
               type: 'token',
               token
-            }));
+            });
           });
 
           // 3. Send final message end tag
-          conn.socket.send(JSON.stringify({
+          send({
             type: 'chat_end'
-          }));
+          });
         }
       } catch (err) {
-        console.error('WS Message Handler Error:', err);
-        conn.socket.send(JSON.stringify({
+        console.error('WebSocket message could not be processed.');
+        send({
           type: 'error',
           message: 'Failed to process message payload'
-        }));
-      }
+        });
+      } finally { handling = false; }
     });
 
     conn.socket.on('close', () => {
       console.log('// WebSocket connection terminated by client.');
       // Cleanup subscriptions
-      for (const [key, val] of progressSubscriptions.entries()) {
-        if (val === conn.socket) {
-          progressSubscriptions.delete(key);
-        }
+      for (const [key, sockets] of progressSubscriptions.entries()) {
+        sockets.delete(conn.socket);
+        if (sockets.size === 0) progressSubscriptions.delete(key);
       }
     });
   }

@@ -45,3 +45,14 @@ These are acceptance checks, not claims that they have run. Current automated
 route tests use a synthetic store. The workspace has no configured isolated
 Supabase project or database server, so SQL has passed PostgreSQL grammar parsing but has not been executed or semantically verified against a real schema.
 Live rollout remains on hold along with deployment.
+
+## Atomic analysis commit rollout
+
+`20261025000001_atomic_analysis_commit.sql` must be applied and tested before the
+API worker version that calls it. The function locks the contract, replaces clause
+rows and commits completed status in one transaction. An already completed contract
+is a no-op on re-delivery. Only the service role can execute it. Verify rollback on
+bad clause output, concurrent calls, a lost HTTP response after commit, and a worker
+restart. The TypeScript regression suite substitutes this RPC and cannot prove
+PostgreSQL semantics or permissions. Without this migration, analysis fails closed.
+Queue delivery still has separate crash/loss windows and is not durable yet.

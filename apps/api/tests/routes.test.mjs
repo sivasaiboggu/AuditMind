@@ -44,9 +44,9 @@ function isolatedStore({storageFails = false, metadataFailsOnce = false, process
   };
   return { store, effects };
 }
-async function fixture(options) {
+async function fixture(options, overrides={}) {
   const {store,effects}=isolatedStore(options);
-  const app=await buildApp({store,initialize:async()=>{},enqueue:async(...args)=>{effects.queued.push(args);if(options?.queueFails)throw new Error('private-queue-error');},streamChat:async()=>{effects.chats++;}});
+  const app=await buildApp({store,initialize:async()=>{},enqueue:async(...args)=>{effects.queued.push(args);if(options?.queueFails)throw new Error('private-queue-error');},streamChat:async()=>{effects.chats++;},...overrides});
   return {app,effects};
 }
 const headers=user=>({authorization:`Bearer ${user}`});
@@ -260,4 +260,31 @@ test('completed owner chat with bounded history reaches provider once',async()=>
 test('partial stored clauses remain unavailable while contract processing or failed',async()=>{
  const {app}=await fixture({processing:true});
  try { const response=await app.inject({url:'/contracts/contract-a/clauses',headers:headers('user-a')});assert.equal(response.statusCode,409);assert.doesNotMatch(response.body,/Synthetic contract text/); } finally {await app.close();}
+});
+
+
+test('progress broadcasts to multiple tabs and closing one preserves the other',async()=>{
+ let progress;const {app}=await fixture({}, {registerProgress:fn=>progress=fn});const sockets=[];
+ try{
+  await app.listen({port:0,host:'127.0.0.1'});
+  for(let i=0;i<2;i++){const ws=new WebSocket(`ws://127.0.0.1:${app.server.address().port}/ws`);sockets.push(ws);await once(ws,'open');const ready=once(ws,'message');ws.send(JSON.stringify({type:'subscribe',accessToken:'user-a',contractId:'contract-a'}));await ready;}
+  await new Promise(r=>setTimeout(r,20));
+  const received=sockets.map(ws=>once(ws,'message'));progress('contract-a','classifying',50,'Synthetic progress');
+  for(const pending of received){const [raw]=await pending;assert.equal(JSON.parse(raw.toString()).data.percent,50);}
+  const closed=once(sockets[0],'close');sockets[0].close();await closed;
+  const pending=once(sockets[1],'message');progress('contract-a','classifying',60,'Synthetic progress');const [raw]=await pending;assert.equal(JSON.parse(raw.toString()).data.percent,60);
+ }finally{sockets.forEach(ws=>ws.terminate());await app.close();}
+});
+test('one socket cannot switch principal to another valid account',async()=>{
+ const {app}=await fixture();let ws;
+ try{
+  await app.listen({port:0,host:'127.0.0.1'});ws=new WebSocket(`ws://127.0.0.1:${app.server.address().port}/ws`);await once(ws,'open');const ready=once(ws,'message');ws.send(JSON.stringify({type:'subscribe',accessToken:'user-a',contractId:'contract-a'}));await ready;await new Promise(r=>setTimeout(r,20));const closed=once(ws,'close');ws.send(JSON.stringify({type:'subscribe',accessToken:'user-b',contractId:'contract-b'}));const [code]=await closed;assert.equal(code,1008);
+ }finally{ws?.terminate();await app.close();}
+});
+test('overlapping chats close socket instead of mixing independent provider streams',async()=>{
+ let release,started;const entered=new Promise(r=>started=r);let count=0;const blocked=new Promise(r=>release=r);
+ const {app}=await fixture({}, {streamChat:async()=>{count++;started();await blocked;}});let ws;
+ try{
+  await app.listen({port:0,host:'127.0.0.1'});ws=new WebSocket(`ws://127.0.0.1:${app.server.address().port}/ws`);await once(ws,'open');const message=JSON.stringify({type:'chat',accessToken:'user-a',contractId:'contract-a',messages:[{role:'user',content:'Synthetic'}]});ws.send(message);await entered;const closed=once(ws,'close');ws.send(message);const [code]=await closed;assert.equal(code,1008);assert.equal(count,1);release();
+ }finally{release();ws?.terminate();await app.close();}
 });

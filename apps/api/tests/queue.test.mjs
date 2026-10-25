@@ -4,9 +4,9 @@ import {processContract} from '../dist/services/queue.js';
 
 function fixture({failure,empty=false,noStore=false,dbFails=false}={}){
   const effects={inserted:[],statuses:[],progress:[]};
-  const store={from(table){return {
+  const store={async rpc(name,args){assert.equal(name,'commit_contract_analysis');if(dbFails)return {error:new Error('private-db-error')};effects.inserted.push(...args.p_clauses);effects.statuses.push({status:'completed',overall_risk_score:args.p_overall_score});return {error:null};},from(table){return {
     async insert(rows){effects.inserted.push(...rows);return {error:dbFails?new Error('private-db-error'):null};},
-    update(value){effects.statuses.push(value);return {async eq(){return {error:null};}}}
+    update(value){effects.statuses.push(value);return {eq(){return this;},then(resolve,reject){return Promise.resolve({error:null}).then(resolve,reject);}}}
   };}};
   const deps={store:noStore?null:store,
     extract:async()=> 'Synthetic contract',
@@ -64,4 +64,24 @@ test('actual zero priority score is valid and remains zero',async()=>{
  const {effects,deps}=fixture();deps.score=async()=>0;
  await processContract('synthetic','synthetic.txt','text/plain',Buffer.from('test'),deps);
  assert.equal(effects.inserted[0].risk_score,0);assert.deepEqual(effects.statuses,[{status:'completed',overall_risk_score:0}]);
+});
+
+
+test('one failed clause waits for active siblings and does not start later provider batches',async()=>{
+ const {effects,deps}=fixture();let release,entered;let calls=0;
+ const started=new Promise(r=>entered=r);const pending=new Promise(r=>release=r);
+ deps.segment=()=>Array.from({length:7},(_,i)=>({number:i+1,title:`Synthetic ${i}`,text:`Synthetic ${i}`}));
+ deps.classify=async text=>{calls++;if(text==='Synthetic 0')throw new Error('synthetic failure');if(text==='Synthetic 1'){entered();await pending;}return {label:'high'};};
+ const work=processContract('synthetic','synthetic.txt','text/plain',Buffer.from('test'),deps);await started;assert.ok(!effects.progress.some(event=>event[1]==='failed'));release();await work;assert.equal(calls,4);assert.equal(effects.progress.at(-1)[1],'failed');assert.equal(effects.inserted.length,0);
+});
+test('failure status update is conditional on processing and cannot downgrade completed jobs',async()=>{
+ const {deps}=fixture();const filters=[];deps.classify=async()=>{throw new Error('synthetic');};deps.store.from=()=>({update(){return this;},eq(key,value){filters.push([key,value]);return this;},then(resolve,reject){return Promise.resolve({error:null}).then(resolve,reject);}});
+ await processContract('synthetic','synthetic.txt','text/plain',Buffer.from('test'),deps);assert.deepEqual(filters,[['id','synthetic'],['status','processing']]);
+});
+
+
+test('ambiguous RPC commit stays for reconciliation instead of forcing failed status',async()=>{
+ const {effects,deps}=fixture();deps.store.rpc=async()=>{throw new Error('connection lost after commit');};
+ await processContract('synthetic','synthetic.txt','text/plain',Buffer.from('test'),deps);
+ assert.deepEqual(effects.statuses,[]);assert.match(effects.progress.at(-1)[3],/may already have committed/);
 });

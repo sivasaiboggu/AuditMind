@@ -335,3 +335,17 @@ The rollout gate and actual two-user checks are in `docs/DATABASE-VERIFICATION.m
 No live policies, Storage bucket, credentials, deployments or provider settings
 were changed. Durable queue recovery, live auth/RLS/Storage/Redis integration and
 legal/corpus evaluation remain unfinished, so this is not an all-fixed release.
+
+### Atomic persistence source checkpoint
+
+The worker now calls a service-role-only transactional analysis commit RPC, which
+locks the contract and saves clauses plus completion together. Re-delivery after
+completion is a no-op. The required additive migration is checked in but has not
+been applied or database-tested. Deploy the API only after the disposable-project
+acceptance checks and reviewed migration rollout. An ambiguous RPC response is
+reported as unconfirmed and is not forced into failed status. Provider fan-out is
+bounded to four clauses per batch; failed batches settle before terminal progress.
+WebSocket progress supports multiple tabs, rejects account changes on the same
+socket, and closes overlapping requests rather than mixing two chat streams.
+Redis job delivery and restart recovery remain unfinished independently of atomic
+result persistence.

@@ -24,7 +24,8 @@ export function setProgressListener(listener: ProgressCallback) {
 
 function updateProgress(contractId: string, stage: string, percent: number, message: string) {
   if (progressListener) {
-    progressListener(contractId, stage, percent, message);
+    try { progressListener(contractId, stage, percent, message); }
+    catch { console.error('Progress notification could not be delivered.'); }
   }
 }
 
@@ -154,7 +155,7 @@ export async function processContract(
   }
 ) {
   console.log(`// [Queue] Processing Contract ID: ${contractId}`);
-  
+  let persistenceStarted = false;
   try {
     if (!deps.store) throw new Error('Contract storage is not configured.');
     // 1. Text Extraction
@@ -175,8 +176,7 @@ export async function processContract(
 
     // 3. Risk Classification & RAG & Gemini Summaries
     let completedClauses = 0;
-    const clausesToSave = await Promise.all(
-      rawClauses.map(async (item) => {
+    const analyze = async (item: typeof rawClauses[number]) => {
         try {
           // Run risk classification, scoring, and RAG retrieval in parallel
           const [classification, score, regContext] = await Promise.all([
@@ -222,8 +222,15 @@ export async function processContract(
           // contract run instead of saving a fabricated zero-risk clause.
           throw new Error('Clause analysis was incomplete.');
         }
-      })
-    );
+    };
+    // Bound provider fan-out and settle the current batch before reporting a
+    // failed job. Promise.all alone left sibling progress running after failure.
+    const clausesToSave: Awaited<ReturnType<typeof analyze>>[] = [];
+    for (let offset = 0; offset < rawClauses.length; offset += 4) {
+      const results = await Promise.allSettled(rawClauses.slice(offset, offset + 4).map(analyze));
+      if (results.some(result => result.status === 'rejected')) throw new Error('Clause analysis was incomplete.');
+      for (const result of results) if (result.status === 'fulfilled') clausesToSave.push(result.value);
+    }
 
     let riskSum = 0;
     clausesToSave.forEach((c) => {
@@ -235,31 +242,31 @@ export async function processContract(
     // 4. Update Database
     deps.progress(contractId, 'generating', 90, 'Syncing details to secure storage vaults...');
     
-    if (deps.store) {
-      // Save clauses
-      const { error: cError } = await deps.store.from('clauses').insert(clausesToSave);
-      if (cError) throw cError;
-
-      // Update contract status
-      const { error: sError } = await deps.store
-        .from('contracts')
-        .update({
-          status: 'completed',
-          overall_risk_score: overallScore
-        })
-        .eq('id', contractId);
-      if (sError) throw sError;
-    }
+    // One transaction replaces old partial rows and commits the status/score.
+    // This requires the reviewed source migration before deploying this API.
+    persistenceStarted = true;
+    const { error: commitError } = await deps.store.rpc('commit_contract_analysis', {
+      p_contract_id: contractId,
+      p_clauses: clausesToSave,
+      p_overall_score: overallScore
+    });
+    if (commitError) throw new Error('Analysis persistence could not be confirmed.');
 
     // 5. Complete
     deps.progress(contractId, 'completed', 100, 'Compliance inspection fully generated.');
     console.log(`// [Queue] Completed processing contract ${contractId} successfully.`);
   } catch (error) {
     console.error('Contract processing failed.');
-    deps.progress(contractId, 'failed', 0, 'Contract analysis did not finish. Review is required before relying on any results.');
+    deps.progress(contractId, 'failed', 0, persistenceStarted
+      ? 'Analysis completion could not be confirmed. Check the dashboard before retrying; stored results may already have committed.'
+      : 'Contract analysis did not finish. Review is required before relying on any results.');
     
-    if (deps.store) {
-      await deps.store.from('contracts').update({ status: 'failed' }).eq('id', contractId);
+    // A transport failure may follow a successful transaction. Do not turn an
+    // unknown commit into a terminal failure or invite a duplicate submission.
+    if (deps.store && !persistenceStarted) {
+      const { error: statusError } = await deps.store.from('contracts').update({ status: 'failed' })
+        .eq('id', contractId).eq('status', 'processing');
+      if (statusError) console.error('Failed analysis status could not be persisted; reconciliation is required.');
     }
   }
 }

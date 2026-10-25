@@ -17,3 +17,10 @@ test('additive owner repair drops all known broad policies before owner reads',(
  for(const table of ['profiles','contracts','clauses','risk_reports','chat_sessions','chat_messages'])assert.ok(sql.includes(`auditmind_owner_read_${table}`));
  for(const policy of ['Allow public read access to profiles','Enable read access for contract owner','Enable insert access for contract owner','Enable update access for contract owner','Enable read access for clauses','Enable write access for clauses','Enable access for chat sessions','Enable access for chat messages'])assert.ok(sql.includes(`DROP POLICY IF EXISTS "${policy}"`));
 });
+test('analysis commit is locked, atomic, idempotent and service-role only',()=>{
+ const sql=read('20261025000001_atomic_analysis_commit.sql');
+ assert.match(sql,/FOR UPDATE/);assert.match(sql,/IF target.status = 'completed' THEN RETURN/);
+ assert.match(sql,/DELETE FROM public.clauses/);assert.match(sql,/INSERT INTO public.clauses/);
+ assert.match(sql,/REVOKE ALL ON FUNCTION.*FROM PUBLIC, anon, authenticated/);
+ assert.match(sql,/GRANT EXECUTE ON FUNCTION.*TO service_role/);
+});
