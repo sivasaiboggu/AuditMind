@@ -1,4 +1,5 @@
 import { authenticatedFetch, sendAuthenticated } from '../lib/api';
+import { chatHistory, interruptChat } from '../lib/chat-stream';
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useContractStore } from '../store/contractStore';
@@ -33,6 +34,7 @@ export default function ContractView() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const failPendingChat = useRef<(() => void) | null>(null);
 
   const handleCopy = (id: string, text: string) => {
     navigator.clipboard.writeText(text);
@@ -104,13 +106,20 @@ export default function ContractView() {
       }
     };
 
-    ws.onclose = () => setWsConnected(false);
+    ws.onclose = () => {
+      if (wsRef.current !== ws) return;
+      setWsConnected(false);
+      failPendingChat.current?.();
+    };
 
-    ws.onerror = (err) => {
-      console.error('WebSocket RAG chat error:', err);
+    ws.onerror = () => {
+      console.error('WebSocket chat connection failed.');
+      if (wsRef.current === ws) failPendingChat.current?.();
     };
 
     return () => {
+      failPendingChat.current?.();
+      wsRef.current = null;
       ws.close();
     };
   }, [id]);
@@ -157,53 +166,41 @@ export default function ContractView() {
     const finalMessagesWithAssistant = [...updatedMessages, initialAssistantMsg];
     setChatMessages(finalMessagesWithAssistant);
 
-    // Map conversation payload format for Gemini
-    const chatPayload = finalMessagesWithAssistant
-      .filter(m => m.message) // skip empty last msg
-      .map(m => ({
-        role: m.sender === 'user' ? ('user' as const) : ('model' as const),
-        content: m.message
-      }));
-
-    // Send chat payload through WebSocket
-    void sendAuthenticated(wsRef.current, {
-      type: 'chat',
-      contractId: id,
-      messages: chatPayload
-    }).catch(() => wsRef.current?.close(1008, 'Authentication required'));
-
+    const socket = wsRef.current;
     let accumulatedResponse = '';
+    let finished = false;
+    const fail = () => {
+      if (finished) return;
+      finished = true;
+      failPendingChat.current = null;
+      setIsChatGenerating(false);
+      setChatMessages(interruptChat(useContractStore.getState().chatMessages, assistantMsgId));
+    };
+    failPendingChat.current = fail;
 
-    // Handle WebSocket responses specifically for streaming
-    wsRef.current.onmessage = (event) => {
-      const payload = JSON.parse(event.data);
-
-      if (payload.type === 'token') {
+    // Install the response handler before sending. Read current store state so
+    // an error never discards the user's latest question or unrelated updates.
+    socket.onmessage = (event) => {
+      if (finished || wsRef.current !== socket) return;
+      let payload;
+      try { payload = JSON.parse(event.data); } catch { fail(); return; }
+      if (payload.type === 'token' && typeof payload.token === 'string') {
         accumulatedResponse += payload.token;
-        // Update the assistant message in place
-        setChatMessages(
-          finalMessagesWithAssistant.map(m => 
-            m.id === assistantMsgId
-              ? { ...m, message: accumulatedResponse }
-              : m
-          )
-        );
+        setChatMessages(useContractStore.getState().chatMessages.map(message =>
+          message.id === assistantMsgId ? { ...message, message: accumulatedResponse } : message));
       } else if (payload.type === 'chat_end') {
+        if (!accumulatedResponse) { fail(); return; }
+        finished = true;
+        failPendingChat.current = null;
         setIsChatGenerating(false);
       } else if (payload.type === 'error') {
-        setIsChatGenerating(false);
-        setChatMessages([
-          ...chatMessages,
-          {
-            id: `msg-error-${Math.random().toString(36).substring(2, 9)}`,
-            sessionId: 'session-001',
-            sender: 'assistant',
-            message: `[Gemini API Error: ${payload.message}]`,
-            createdAt: new Date().toISOString()
-          }
-        ]);
+        fail();
       }
     };
+    void sendAuthenticated(socket, {
+      type: 'chat', contractId: id, messages: chatHistory(finalMessagesWithAssistant)
+    }).catch(fail);
+
   };
 
   const getRiskBorder = (level: string) => {

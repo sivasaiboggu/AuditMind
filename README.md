@@ -274,3 +274,14 @@ local-search fallback is not appended to a partial AI answer. Provider request
 objects are not logged on that failure path. Eight isolated decoder regressions
 cover these cases, without provider calls. Live provider behavior and legal
 accuracy remain unverified.
+
+### Interrupted chat in the client
+
+WebSocket errors, closure and failed authenticated sends release the pending
+chat state. The latest user question stays visible; its unfinished assistant
+placeholder is replaced with an explicit incomplete-answer notice, not trusted
+partial legal text. Incomplete notices are excluded from later model history.
+The response handler is installed before sending and updates current state,
+not the stale pre-question snapshot. Three isolated state-helper tests and a
+synthetic local desktop rendering cover the notice/history behavior. No live
+provider, authenticated Supabase session, or full reconnect flow was verified.
