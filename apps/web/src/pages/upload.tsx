@@ -1,3 +1,4 @@
+import { workspaceGuard } from '../lib/workspace-guard';
 import { authenticatedFetch, sendAuthenticated } from '../lib/api';
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -11,20 +12,26 @@ const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3000/ws';
 
 export default function UploadPage() {
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const { isAnalyzing, setIsAnalyzing, progress, setProgress, setActiveContract } = useContractStore();
   const [isDragOver, setIsDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
+  const uploadEpoch = useRef(0);
+  const uploadTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const uploadAbort = useRef<AbortController | null>(null);
   useEffect(() => {
-    // Cleanup WebSocket on unmount
+    const ownerCurrent = workspaceGuard();
     return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
+    ++uploadEpoch.current;
+    if (uploadTimer.current) clearInterval(uploadTimer.current);
+    uploadAbort.current?.abort();
+    wsRef.current?.close();
+    wsRef.current = null;
+    if (ownerCurrent()) { setIsAnalyzing(false); setProgress(null); }
     };
-  }, []);
+  }, [user?.id]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -41,6 +48,12 @@ export default function UploadPage() {
   };
 
   const handleUploadFile = async (file: File) => {
+    if (useContractStore.getState().isAnalyzing) return;
+    const epoch = ++uploadEpoch.current;
+    const ownerCurrent = workspaceGuard();
+    const current = () => uploadEpoch.current === epoch && ownerCurrent();
+    const controller = new AbortController();
+    uploadAbort.current = controller;
     setError(null);
     setIsAnalyzing(true);
     setProgress({
@@ -50,12 +63,13 @@ export default function UploadPage() {
       percent: 5
     });
 
-    let uploadTimer: any = null;
+    let timer: ReturnType<typeof setInterval> | null = null;
     let uploadPercent = 5;
 
     try {
       // Smoothly animate the loading percentage during the network payload upload
-      uploadTimer = setInterval(() => {
+      timer = uploadTimer.current = setInterval(() => {
+        if (!current()) return;
         if (uploadPercent < 45) {
           uploadPercent += 3;
           setProgress({
@@ -74,10 +88,12 @@ export default function UploadPage() {
       const query = '';
       const response = await authenticatedFetch(`${API_URL}/contracts/upload${query}`, {
         method: 'POST',
-        body: formData
+        body: formData,
+        signal: controller.signal
       });
 
-      if (uploadTimer) clearInterval(uploadTimer);
+      if (timer) clearInterval(timer);
+      if (!current()) return;
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -85,6 +101,7 @@ export default function UploadPage() {
       }
 
       const contract = await response.json();
+      if (!current()) return;
       const contractId = contract.id;
       setActiveContract(contract);
 
@@ -92,7 +109,9 @@ export default function UploadPage() {
       const ws = new WebSocket(WS_URL);
       wsRef.current = ws;
 
+      let completed = false;
       ws.onopen = () => {
+        if (!current()) { ws.close(); return; }
         console.log('// WS: Connection active. Subscribing to contract:', contractId);
         void sendAuthenticated(ws, {
           type: 'subscribe',
@@ -101,20 +120,24 @@ export default function UploadPage() {
       };
 
       ws.onmessage = (event) => {
-        const payload = JSON.parse(event.data);
-        console.log('// WS Event Received:', payload);
+        if (!current()) return;
+        let payload;
+        try { payload = JSON.parse(event.data); } catch { ws.close(); return; }
+        if (payload.type === 'error') { ws.close(); return; }
 
-        if (payload.type === 'progress') {
+        if (payload.type === 'progress' && payload.data?.contractId === contractId) {
           const progressData = payload.data;
           setProgress(progressData);
 
           if (progressData.stage === 'completed') {
+            completed = true;
             ws.close();
             setIsAnalyzing(false);
             setProgress(null);
             // Navigate directly to the newly parsed contract!
             navigate(`/contract/${contractId}`);
           } else if (progressData.stage === 'failed') {
+            completed = true;
             ws.close();
             setIsAnalyzing(false);
             setProgress(null);
@@ -123,16 +146,20 @@ export default function UploadPage() {
         }
       };
 
-      ws.onerror = (err) => {
-        console.error('WebSocket connection error:', err);
+      const interrupted = () => {
+        if (!current() || completed) return;
+        completed = true;
         setIsAnalyzing(false);
         setProgress(null);
-        setError('Realtime update pipeline connection was interrupted.');
+        setError(`Realtime updates stopped. Check contract ${contractId} in the dashboard before uploading again.`);
       };
+      ws.onerror = interrupted;
+      ws.onclose = interrupted;
 
     } catch (err: any) {
-      if (uploadTimer) clearInterval(uploadTimer);
-      console.error(err);
+      if (timer) clearInterval(timer);
+      if (!current()) return;
+      console.error('Contract upload could not be confirmed.');
       setIsAnalyzing(false);
       setProgress(null);
       setError(err.message || 'Failed to ingest document file.');

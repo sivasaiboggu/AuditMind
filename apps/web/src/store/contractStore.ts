@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Contract, Clause, RiskReport, ChatMessage, ProcessingProgress } from '@auditmind/shared-types';
 
 interface ContractState {
+  workspaceEpoch: number;
   contracts: Contract[];
   activeContract: Contract | null;
   activeClauses: Clause[];
@@ -26,6 +27,7 @@ interface ContractState {
 }
 
 export const useContractStore = create<ContractState>((set) => ({
+  workspaceEpoch: 0,
   contracts: [],
   activeContract: null,
   activeClauses: [],
@@ -48,10 +50,10 @@ export const useContractStore = create<ContractState>((set) => ({
   setIsAnalyzing: (isAnalyzing) => set({ isAnalyzing }),
   setProgress: (progress) => set({ progress }),
   setUser: (user) => set(state => state.user?.id === user?.id ? { user } : {
-    user, contracts: [], activeContract: null, activeClauses: [], activeReport: null,
+    workspaceEpoch: state.workspaceEpoch + 1, user, contracts: [], activeContract: null, activeClauses: [], activeReport: null,
     chatMessages: [], activeSessionId: null, isAnalyzing: false, progress: null,
   }),
-  resetWorkspace: () => set({ user: null, contracts: [], activeContract: null,
+  resetWorkspace: () => set(state => ({ workspaceEpoch: state.workspaceEpoch + 1, user: null, contracts: [], activeContract: null,
     activeClauses: [], activeReport: null, chatMessages: [], activeSessionId: null,
-    isAnalyzing: false, progress: null }),
+    isAnalyzing: false, progress: null })),
 }));

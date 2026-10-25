@@ -1,5 +1,6 @@
+import { workspaceGuard } from '../lib/workspace-guard';
 import { authenticatedFetch } from '../lib/api';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useContractStore } from '../store/contractStore';
 import { useAuth } from '../lib/auth-context';
@@ -17,64 +18,46 @@ export default function Dashboard() {
   const { contracts, setContracts, setActiveContract } = useContractStore();
   const [notification, setNotification] = useState<string | null>(null);
 
-  const fetchContracts = async () => {
-    try {
-      const query = '';
-      const response = await authenticatedFetch(`${API_URL}/contracts${query}`);
-      if (response.ok) {
-        const data = await response.json();
-        setContracts(data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch contracts:', err);
-    }
-  };
+  const listRead = useRef(0);
+  const mounted = useRef(false);
 
-  // Real-time Supabase Table Subscription
   useEffect(() => {
-    fetchContracts();
-
-    if (!supabase) return;
-
-    // Listen to INSERT, UPDATE, or DELETE events in contracts table
-    const channel = supabase
-      .channel('schema-db-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'contracts'
-        },
-        (payload) => {
-          console.log('// Real-time DB Event Received:', payload);
-          fetchContracts(); // Refetch database items instantly
-
-          // Show browser notification toast on change
-          if (payload.eventType === 'INSERT') {
-            const doc = payload.new as any;
-            if (doc.user_id === user?.id) {
-              setNotification(`New contract analysis scheduled: ${doc.name}`);
-            }
-          } else if (payload.eventType === 'UPDATE') {
-            const oldDoc = payload.old as any;
-            const newDoc = payload.new as any;
-            if (newDoc.user_id === user?.id) {
-              if (newDoc.status === 'completed' && oldDoc.status !== 'completed') {
-                setNotification(`Analysis complete! ${newDoc.name} is ready.`);
-              } else if (newDoc.status === 'failed' && oldDoc.status !== 'failed') {
-                setNotification(`Analysis failed for ${newDoc.name}: ${newDoc.error || 'Server error'}`);
-              }
-            }
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
+    let disposed = false;
+    mounted.current = true;
+    const ownerCurrent = workspaceGuard();
+    const current = () => !disposed && ownerCurrent();
+    setNotification(null);
+    const fetchContracts = async () => {
+      const read = ++listRead.current;
+      try {
+        const response = await authenticatedFetch(`${API_URL}/contracts`);
+        if (!current() || read !== listRead.current) return;
+        if (!response.ok) throw new Error('Contract list unavailable.');
+        const data = await response.json();
+        if (current() && read === listRead.current) setContracts(data);
+      } catch {
+        if (current() && read === listRead.current) setNotification('Contract list could not be refreshed. Try again.');
+      }
     };
-  }, [user]);
+    void fetchContracts();
+    const channel = supabase?.channel(`contracts-${user?.id || 'demo'}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'contracts',
+        ...(user?.id ? { filter: `user_id=eq.${user.id}` } : {}) }, payload => {
+        if (!current()) return;
+        void fetchContracts();
+        const doc = payload.new as any;
+        if (doc?.user_id !== user?.id) return;
+        if (payload.eventType === 'INSERT') setNotification(`New contract analysis scheduled: ${doc.name}`);
+        else if (payload.eventType === 'UPDATE' && doc.status === 'completed') setNotification(`Analysis complete! ${doc.name} is ready.`);
+        else if (payload.eventType === 'UPDATE' && doc.status === 'failed') setNotification(`Analysis failed for ${doc.name}. Check the contract status.`);
+      }).subscribe();
+    return () => {
+      disposed = true;
+      mounted.current = false;
+      ++listRead.current;
+      if (channel) void supabase?.removeChannel(channel);
+    };
+  }, [user?.id, setContracts]);
 
   // Compute stats based on active database entries
   const completedContracts = contracts.filter(c => c.status === 'completed');
@@ -154,18 +137,25 @@ export default function Dashboard() {
     e.stopPropagation();
     if (!confirm('Are you sure you want to delete this contract?')) return;
     
+    const ownerCurrent = workspaceGuard();
+    const current = () => mounted.current && ownerCurrent();
+    ++listRead.current;
     try {
       const response = await authenticatedFetch(`${API_URL}/contracts/${id}`, {
         method: 'DELETE'
       });
+      if (!current()) return;
+      ++listRead.current;
       if (response.ok) {
-        setContracts(contracts.filter(c => c.id !== id));
+        setContracts(useContractStore.getState().contracts.filter(c => c.id !== id));
       } else {
         const errData = await response.json().catch(() => ({}));
+        if (!current()) return;
         setNotification(`Error: ${errData.error || 'Failed to delete contract.'}`);
       }
-    } catch (err) {
-      console.error(err);
+    } catch {
+      if (!current()) return;
+      console.error('Contract deletion could not be confirmed.');
       setNotification('Error: Network connection failure during contract deletion.');
     }
   };

@@ -306,3 +306,15 @@ bypass; demo login remains available only without configured auth. Six isolated
 auth/store regressions cover these transitions. This is not full cross-account
 isolation proof: existing dashboard request races, live auth/RLS behavior and
 other asynchronous consumers still need their own checks.
+
+### Client ownership and lifecycle verification
+
+Private browser work is scoped to a workspace epoch, not only a user ID. Logout
+and owner changes invalidate pending token lookups, list/clause JSON responses,
+upload timers and chat/upload socket handlers, including A-to-B-to-A switches.
+Protected views remount when the owner changes. Dashboard refreshes also reject
+older overlapping reads. Uploads interrupted after acceptance direct the user
+back to the dashboard rather than implying that the server job was cancelled.
+The regression suite exercises these with synthetic sessions, deferred responses
+and sockets. It is not evidence of real Supabase sign-in, RLS, Storage, Redis
+recovery, provider accuracy or deployed browser isolation.

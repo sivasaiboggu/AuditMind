@@ -1,4 +1,5 @@
 import { authenticatedFetch, sendAuthenticated } from '../lib/api';
+import { workspaceGuard } from '../lib/workspace-guard';
 import { chatHistory, interruptChat } from '../lib/chat-stream';
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -14,7 +15,7 @@ const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3000/ws';
 export default function ContractView() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const {
     setContracts,
     activeContract,
@@ -46,8 +47,13 @@ export default function ContractView() {
   useEffect(() => {
     if (!id) return;
     let disposed = false;
+    const ownerCurrent = workspaceGuard();
+    const currentOwner = () => !disposed && ownerCurrent();
     setSelectedClause(null);
     setChatInput('');
+    setIsChatGenerating(false);
+    setWsConnected(false);
+    setCopiedId(null);
     setActiveTab('analysis');
     const current = useContractStore.getState().contracts.find(c => c.id === id);
     setActiveContract(current || null);
@@ -56,24 +62,24 @@ export default function ContractView() {
       try {
         if (!current) {
           const response = await authenticatedFetch(`${API_URL}/contracts`);
-          if (disposed) return;
+          if (!currentOwner()) return;
           if (!response.ok) throw new Error('Contract list unavailable.');
           const data = await response.json();
-          if (disposed) return;
+          if (!currentOwner()) return;
           const found = data.find((contract: any) => contract.id === id);
           if (!found) { navigate('/dashboard'); return; }
           setContracts(data);
           setActiveContract(found);
         }
         const response = await authenticatedFetch(`${API_URL}/contracts/${id}/clauses`);
-        if (disposed) return;
+        if (!currentOwner()) return;
         if (!response.ok) throw new Error('Contract clauses unavailable.');
         const clauses = await response.json();
-        if (disposed) return;
+        if (!currentOwner()) return;
         setActiveClauses(clauses);
         setSelectedClause(clauses[0] || null);
       } catch {
-        if (!disposed) {
+        if (currentOwner()) {
           setActiveClauses([]);
           setSelectedClause(null);
           console.error('Contract context could not be loaded.');
@@ -82,15 +88,16 @@ export default function ContractView() {
     };
     void load();
     return () => { disposed = true; };
-  }, [id, navigate, setActiveContract, setActiveClauses, setContracts]);
+  }, [id, user?.id, navigate, setActiveContract, setActiveClauses, setContracts]);
 
   // 2. Configure WebSocket connection for real-time document chat
   useEffect(() => {
+    const ownerCurrent = workspaceGuard();
     const ws = new WebSocket(WS_URL);
     wsRef.current = ws;
 
     ws.onopen = () => {
-      if (wsRef.current !== ws) return;
+      if (wsRef.current !== ws || !ownerCurrent()) return;
       console.log('// WS: Connected to RAG chat drawer');
       setWsConnected(true);
       if (id) {
@@ -102,14 +109,14 @@ export default function ContractView() {
     };
 
     ws.onclose = () => {
-      if (wsRef.current !== ws) return;
+      if (wsRef.current !== ws || !ownerCurrent()) return;
       setWsConnected(false);
       failPendingChat.current?.();
     };
 
     ws.onerror = () => {
       console.error('WebSocket chat connection failed.');
-      if (wsRef.current === ws) failPendingChat.current?.();
+      if (wsRef.current === ws && ownerCurrent()) failPendingChat.current?.();
     };
 
     return () => {
@@ -117,7 +124,7 @@ export default function ContractView() {
       wsRef.current = null;
       ws.close();
     };
-  }, [id]);
+  }, [id, user?.id]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -161,11 +168,13 @@ export default function ContractView() {
     const finalMessagesWithAssistant = [...updatedMessages, initialAssistantMsg];
     setChatMessages(finalMessagesWithAssistant);
 
+    const ownerCurrent = workspaceGuard();
     const socket = wsRef.current;
     let accumulatedResponse = '';
     let finished = false;
     const fail = () => {
       if (finished) return;
+      if (!ownerCurrent()) { finished = true; failPendingChat.current = null; return; }
       finished = true;
       failPendingChat.current = null;
       setIsChatGenerating(false);
@@ -176,7 +185,7 @@ export default function ContractView() {
     // Install the response handler before sending. Read current store state so
     // an error never discards the user's latest question or unrelated updates.
     socket.onmessage = (event) => {
-      if (finished || wsRef.current !== socket) return;
+      if (finished || wsRef.current !== socket || !ownerCurrent()) return;
       let payload;
       try { payload = JSON.parse(event.data); } catch { fail(); return; }
       if (payload.type === 'token' && typeof payload.token === 'string') {
