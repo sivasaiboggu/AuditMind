@@ -41,10 +41,9 @@ applicability, freshness and embeddings need their own check.
    until those checks pass. Current Redis RPOP and in-memory queue modes still
    have loss windows; an outbox/lease design is separate unfinished work.
 
-These are acceptance checks, not claims that they have run. Current automated
-route tests use a synthetic store. The workspace has no configured isolated
-Supabase project or database server, so SQL has passed PostgreSQL grammar parsing but has not been executed or semantically verified against a real schema.
-Live rollout remains on hold along with deployment.
+These Supabase acceptance checks have not run. API route tests still use a
+synthetic store. Core SQL was separately executed on disposable local PostgreSQL
+as described below. Live rollout remains on hold along with deployment.
 
 ## Atomic analysis commit rollout
 
@@ -53,6 +52,45 @@ API worker version that calls it. The function locks the contract, replaces clau
 rows and commits completed status in one transaction. An already completed contract
 is a no-op on re-delivery. Only the service role can execute it. Verify rollback on
 bad clause output, concurrent calls, a lost HTTP response after commit, and a worker
-restart. The TypeScript regression suite substitutes this RPC and cannot prove
-PostgreSQL semantics or permissions. Without this migration, analysis fails closed.
+restart. The TypeScript regression suite substitutes this RPC. The separate disposable
+PostgreSQL harness checks core semantics and permissions but not Supabase services. Without this migration, analysis fails closed.
 Queue delivery still has separate crash/loss windows and is not durable yet.
+
+
+## Executed local PostgreSQL verification
+
+On October 25, the core migrations and atomic commit were executed on a disposable
+PostgreSQL 14.24 cluster listening on loopback only. No user or production database
+was connected. `scripts/db/run-isolated.sh` creates a new cluster, loads synthetic
+roles/users and core migrations, runs assertions, then stops and deletes the cluster.
+It refuses external database URLs and takes only local binary/share directories.
+
+Passed assertions:
+- A forced late UPDATE failure rolls back both deleted old clauses and inserted
+  replacement clauses, leaving the processing status unchanged.
+- A valid service-role commit persists the actual score and clause rows together.
+- Re-delivery does not replace or duplicate completed results.
+- Invalid explanations leave the contract processing and persist no output.
+- Two concurrent sessions serialize on the contract row and leave one result set.
+- Anonymous and authenticated roles cannot execute the RPC; the service role can.
+- Actual PostgreSQL RLS returns only A's or B's profile/contracts/clauses, hides
+  null-owner and anonymous records, and denies direct client contract insertion.
+- The signup trigger creates a profile with the added avatar column present.
+
+Limits: `auth.uid()` is a synthetic session-setting function, not real Supabase
+JWT issuance. The vector extension, corpus table and matching RPC are excluded
+from this core harness. Storage, Redis, real Auth, browser token refresh/expiry,
+custom deployed policies, network-loss/restart recovery and legal/provider quality
+are not verified by it. These local passes do not authorize or prove a live rollout.
+
+Run with a local PostgreSQL server installation and Python `pglast` available:
+
+```sh
+PG_BIN=/absolute/path/to/postgresql/bin \
+PG_SHARE=/absolute/path/to/postgresql/share \
+  scripts/db/run-isolated.sh
+```
+
+`psql` must be on PATH. The default loopback test port is 55439; set
+`PG_TEST_PORT` to another unused port if needed. Never point this harness at an
+existing cluster. It uses only synthetic `example.invalid` identities and fixtures.
