@@ -24,6 +24,12 @@ class RiskBoundaryTests(unittest.TestCase):
             with self.subTest(result=result), self.assertRaises(ValueError):
                 validated_risk_prediction(result)
 
+    def test_multiline_and_tabbed_clause_phrases_still_match(self):
+        # "." does not cross newlines; wrapped contract text must not downgrade risk.
+        self.assertEqual(compute_local_heuristics('shall indemnify the other party for any\nnegligence of its officers')[0], 'critical')
+        self.assertEqual(compute_local_heuristics('this agreement shall automatic\nrenew each year')[0], 'medium')
+        self.assertEqual(compute_local_heuristics('perpetual\tand irrevocable license')[0], 'critical')
+
     def test_rules_still_available_without_ml_dependencies(self):
         self.assertEqual(compute_local_heuristics('ordinary delivery clause')[0], 'low')
         self.assertEqual(compute_local_heuristics('indemnify for negligence')[0], 'critical')

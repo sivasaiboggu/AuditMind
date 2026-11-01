@@ -8,7 +8,10 @@ def compute_local_heuristics(text: str):
   """
   Python fallback classifier when Hugging Face is loading or fails.
   """
-  text_lower = text.lower()
+  # Contract clauses routinely wrap across lines; "." never matches "\n",
+  # so two-part patterns would silently miss. Collapse all whitespace runs
+  # (newlines, tabs, repeated spaces) before matching.
+  text_lower = re.sub(r"\s+", " ", text.lower())
   
   # Rule metrics
   critical_patterns = [
