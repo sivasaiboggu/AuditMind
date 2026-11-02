@@ -1,0 +1,30 @@
+# Render blueprint for the AuditMind Fastify API (free web service).
+# Review before use: free instances have 512 MB RAM / 0.1 CPU, spin down after
+# 15 idle minutes (about a 1 minute cold start), share 750 free instance-hours
+# per workspace per month, and block outbound SMTP ports.
+# Source: https://render.com/docs/free
+services:
+  - type: web
+    name: auditmind-api
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build:api
+    startCommand: npm run start:api
+    healthCheckPath: /health
+    envVars:
+      # Server-only secrets: fill these in the Render dashboard, never in git.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      # Public URL of the deployed web frontend, used for CORS.
+      - key: FRONTEND_URL
+        sync: false
+      # Optional: external Python ML service. When unset the API classifies
+      # clauses with its built-in rule-based fallback (services/ml.ts).
+      - key: ML_SERVICE_URL
+        sync: false
+      - key: NODE_ENV
+        value: production
