@@ -174,10 +174,14 @@ export default function UploadPage() {
       console.error('Contract upload could not be confirmed.');
       setIsAnalyzing(false);
       setProgress(null);
+      const unreachable = err instanceof TypeError;
+      const detail = unreachable
+        ? 'Could not reach the analysis server. It appears to be offline or still starting up.'
+        : (err.message || 'Upload response was interrupted.');
       if (requestStarted && !definiteRejection && !err.requestNotSent) {
         acceptanceUnknown.current = true;
-        setError(`${err.message || 'Upload response was interrupted.'} Acceptance is uncertain. Do not upload again until you check the dashboard and retained file with an operator.`);
-      } else setError(err.message || 'The document was not accepted.');
+        setError(`${detail} Acceptance is uncertain. Do not upload again until you check the dashboard and retained file with an operator.`);
+      } else setError(detail);
     }
   };
 
