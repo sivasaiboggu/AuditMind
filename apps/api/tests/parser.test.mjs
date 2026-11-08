@@ -43,3 +43,17 @@ test('header-only and tiny unstructured documents are preserved, empty stays emp
   assert.equal(segmentClauses('Pay now.')[0].text,'Pay now.');
   assert.deepEqual(segmentClauses(' \n '),[]);
 });
+test('wrapped numeric lines in running text do not fragment clauses',()=>{
+  const text='Section 1 Payment\nThe fees are due within\n30 days of the invoice date.\n2. No appeal.';
+  const result=segmentClauses(text);
+  assert.equal(result.length,2);
+  assert.equal(result[0].text,'Section 1 Payment\nThe fees are due within\n30 days of the invoice date.');
+  assert.equal(result[1].text,'2. No appeal.');
+});
+test('numeric headings with markers, dotted forms and titles still segment',()=>{
+  const result=segmentClauses('10 Indemnity\nLiability applies.\n3.1 Termination\nEnds on notice.\n4\nStandalone.');
+  assert.equal(result.length,3);
+  assert.equal(result[0].number,'Section 10');
+  assert.equal(result[1].number,'Section 3.1');
+  assert.equal(result[2].number,'Section 4');
+});

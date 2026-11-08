@@ -44,12 +44,25 @@ export function segmentClauses(text: string): RawSegment[] {
   // Require a boundary after the number: "Section 1" must not match "Sectional".
   // Bare Roman numerals need punctuation, so "I agree" stays ordinary text.
   const explicit = /^(?:Section|Article|Clause)\s+(\d+(?:\.\d+)*|[IVXLCDM]+)(?=$|[\s:.)-])(?:[.:)\s-]*)(.*)$/i;
-  const numbered = /^(\d+(?:\.\d+)*)(?:[.)]\s+|\s+|$)(.*)$/;
+  // A bare number followed by lowercase running text ("30 days of the invoice")
+  // is a wrapped sentence, not a heading. Numeric headings need a marker
+  // ("1."), a dotted form ("3.1"), a title-case start ("10 Indemnity"), or the
+  // number alone on the line. Missing a real header only keeps it in the
+  // previous segment's text, while a false header silently fragments clause
+  // analysis, so bias toward running text.
+  const numericHeading = (line: string): RegExpExecArray | null => {
+    const match = /^(\d+(?:\.\d+)*)(?:[.)]\s+|\s+|$)(.*)$/.exec(line);
+    if (!match) return null;
+    const marked = /^[0-9.]+[.)]/.test(line);
+    const dotted = match[1].includes('.');
+    const titled = /^[A-Z]/.test(match[2]);
+    return marked || dotted || titled || match[2] === '' ? match : null;
+  };
   const roman = /^([IVXLCDM]+)[.)]\s+(.*)$/;
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line) continue;
-    const match = explicit.exec(line) || numbered.exec(line) || roman.exec(line);
+    const match = explicit.exec(line) || numericHeading(line) || roman.exec(line);
     if (match) {
       flush();
       number = `Section ${match[1]}`;
