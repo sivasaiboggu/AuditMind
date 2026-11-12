@@ -1,7 +1,7 @@
 import os
 import uvicorn
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from risk_rules import compute_local_heuristics, validated_risk_prediction
 
 app = FastAPI(
@@ -10,9 +10,15 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Clauses are contract paragraphs, not whole documents. Without a bound, one
+# oversized request body keeps the single-worker regex/model path busy, so cap
+# the field well above any real clause. Oversized input is rejected with 422;
+# callers then use their own reviewed fallback rather than an unbounded scan.
+MAX_CLAUSE_CHARS = 20000
+
 # Request schema
 class ClauseInput(BaseModel):
-  text: str
+  text: str = Field(max_length=MAX_CLAUSE_CHARS)
 
 # No default relevance/base model can establish legal risk. Model inference is
 # opt-in and local-only, and needs a reviewed model with all four risk labels.

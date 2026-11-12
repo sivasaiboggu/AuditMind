@@ -36,6 +36,20 @@ class ServiceTests(unittest.TestCase):
         for route in ['/classify-clause','/risk-score']:
             self.assertEqual(self.client.post(route,json={'text':'  '}).status_code,400)
 
+    def test_oversized_clause_rejected_before_any_scan(self):
+        oversized='ordinary clause '+'x'*main.MAX_CLAUSE_CHARS
+        self.assertGreater(len(oversized),main.MAX_CLAUSE_CHARS)
+        for route in ['/classify-clause','/risk-score']:
+            with self.subTest(route=route):
+                self.assertEqual(self.client.post(route,json={'text':oversized}).status_code,422)
+
+    def test_clause_at_the_bound_is_still_processed(self):
+        at_bound='ordinary clause '+'x'*(main.MAX_CLAUSE_CHARS-len('ordinary clause '))
+        self.assertEqual(len(at_bound),main.MAX_CLAUSE_CHARS)
+        for route in ['/classify-clause','/risk-score']:
+            with self.subTest(route=route):
+                self.assertEqual(self.client.post(route,json={'text':at_bound}).status_code,200)
+
     def test_rules_disclose_provenance(self):
         data=self.client.post('/classify-clause',json={'text':'ordinary clause'}).json()
         self.assertEqual(data['label'],'low')
