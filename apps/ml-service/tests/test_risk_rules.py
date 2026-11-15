@@ -30,6 +30,32 @@ class RiskBoundaryTests(unittest.TestCase):
         self.assertEqual(compute_local_heuristics('this agreement shall automatic\nrenew each year')[0], 'medium')
         self.assertEqual(compute_local_heuristics('perpetual\tand irrevocable license')[0], 'critical')
 
+    def test_service_rules_match_the_api_offline_fallback_battery(self):
+        # The same battery runs against the TypeScript fallback in
+        # apps/api/tests/ml-boundary.test.mjs; both paths must agree exactly.
+        battery = [
+            ('ordinary delivery clause', 'low', 0.62),
+            ('confidentiality obligations apply', 'medium', 0.72),
+            ('the receiving party shall indemnify the disclosing party', 'high', 0.79),
+            ('indemnify for negligence', 'critical', 0.88),
+            ('perpetual, irrevocable license', 'critical', 0.88),
+            ('liquidated damages apply', 'critical', 0.88),
+            ('negligence while disclosing information', 'critical', 0.88),
+            ('governing law: state of delaware', 'high', 0.79),
+            ('intellectual property rights', 'high', 0.79),
+            ('sole discretion of the company', 'high', 0.79),
+            ('limitation of liability', 'high', 0.79),
+            ('this contract shall automatically renew', 'medium', 0.72),
+            ('exclusive jurisdiction of the courts', 'medium', 0.72),
+            ('force majeure event', 'medium', 0.72),
+            ('waives all rights to trial by jury', 'low', 0.62),
+            ('material breach of the agreement', 'low', 0.62),
+            ('this agreement shall automatic\nrenew each year', 'medium', 0.72),
+        ]
+        for text, label, confidence in battery:
+            with self.subTest(text=text):
+                self.assertEqual(compute_local_heuristics(text), (label, confidence))
+
     def test_rules_still_available_without_ml_dependencies(self):
         self.assertEqual(compute_local_heuristics('ordinary delivery clause')[0], 'low')
         self.assertEqual(compute_local_heuristics('indemnify for negligence')[0], 'critical')
