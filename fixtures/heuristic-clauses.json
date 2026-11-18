@@ -1,0 +1,29 @@
+{
+  "description": "Shared clause battery for the mirrored heuristic risk rules. The TypeScript offline fallback (apps/api/src/services/ml.ts, fallbackClassify) and the Python service rules (apps/ml-service/risk_rules.py, compute_local_heuristics) must agree on every entry, tier for tier and confidence for confidence. Both test suites load this file: apps/api/tests/ml-boundary.test.mjs and apps/ml-service/tests/test_risk_rules.py. Uncalibrated review rules, not legal advice or trained-model probabilities.",
+  "clauses": [
+    { "text": "ordinary delivery clause", "label": "low", "confidence": 0.62 },
+    { "text": "confidentiality obligations apply", "label": "medium", "confidence": 0.72 },
+    { "text": "the receiving party shall indemnify the disclosing party", "label": "high", "confidence": 0.79 },
+    { "text": "indemnify for negligence", "label": "critical", "confidence": 0.88 },
+    { "text": "perpetual, irrevocable license", "label": "critical", "confidence": 0.88 },
+    { "text": "liquidated damages apply", "label": "critical", "confidence": 0.88 },
+    { "text": "negligence while disclosing information", "label": "critical", "confidence": 0.88 },
+    { "text": "governing law: state of delaware", "label": "high", "confidence": 0.79 },
+    { "text": "intellectual property rights", "label": "high", "confidence": 0.79 },
+    { "text": "sole discretion of the company", "label": "high", "confidence": 0.79 },
+    { "text": "limitation of liability", "label": "high", "confidence": 0.79 },
+    { "text": "this contract shall automatically renew", "label": "medium", "confidence": 0.72 },
+    { "text": "exclusive jurisdiction of the courts", "label": "medium", "confidence": 0.72 },
+    { "text": "force majeure event", "label": "medium", "confidence": 0.72 },
+    { "text": "waives all rights to trial by jury", "label": "low", "confidence": 0.62 },
+    { "text": "material breach of the agreement", "label": "low", "confidence": 0.62 },
+    { "text": "this agreement shall automatic\nrenew each year", "label": "medium", "confidence": 0.72 },
+    { "text": "the party shall indemnify for negligence and keep confidentiality", "label": "critical", "confidence": 0.88 },
+    { "text": "indemnify and confidentiality obligations", "label": "high", "confidence": 0.79 },
+    { "text": "a perpetual\nand irrevocable license", "label": "critical", "confidence": 0.88 },
+    { "text": "force\nmajeure event", "label": "medium", "confidence": 0.72 },
+    { "text": "exclusive\tjurisdiction of the courts", "label": "medium", "confidence": 0.72 },
+    { "text": "the parties may renew the term by mutual consent", "label": "low", "confidence": 0.62 },
+    { "text": "LIQUIDATED DAMAGES APPLY", "label": "critical", "confidence": 0.88 }
+  ]
+}

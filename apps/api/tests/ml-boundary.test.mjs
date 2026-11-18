@@ -1,7 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import axios from 'axios';
 import { classifyClauseRisk, getRiskScore, fallbackClassify } from '../dist/services/ml.js';
+
+// One battery, two implementations. The Python service rules test in
+// apps/ml-service/tests/test_risk_rules.py loads the same file; tier or
+// confidence edits that only land on one side fail here.
+const HEURISTIC_BATTERY = JSON.parse(readFileSync(
+  new URL('../../../fixtures/heuristic-clauses.json', import.meta.url), 'utf8'
+)).clauses;
 
 test('classification preserves explicit label, zero score and method', async () => {
   const original = axios.post;
@@ -39,31 +47,12 @@ test('risk score accepts zero but rejects malformed and out-of-range responses',
 
 // The offline fallback must agree with the Python service's
 // compute_local_heuristics tier for tier, confidence for confidence. The same
-// battery runs in apps/ml-service/tests/test_risk_rules.py.
+// shared battery runs in apps/ml-service/tests/test_risk_rules.py.
 test('offline fallback mirrors the service heuristic rules exactly', () => {
-  const battery = [
-    ['ordinary delivery clause','low',.62],
-    ['confidentiality obligations apply','medium',.72],
-    ['the receiving party shall indemnify the disclosing party','high',.79],
-    ['indemnify for negligence','critical',.88],
-    ['perpetual, irrevocable license','critical',.88],
-    ['liquidated damages apply','critical',.88],
-    ['negligence while disclosing information','critical',.88],
-    ['governing law: state of delaware','high',.79],
-    ['intellectual property rights','high',.79],
-    ['sole discretion of the company','high',.79],
-    ['limitation of liability','high',.79],
-    ['this contract shall automatically renew','medium',.72],
-    ['exclusive jurisdiction of the courts','medium',.72],
-    ['force majeure event','medium',.72],
-    ['waives all rights to trial by jury','low',.62],
-    ['material breach of the agreement','low',.62],
-    ['this agreement shall automatic\nrenew each year','medium',.72],
-  ];
-  for (const [text,label,confidence] of battery) {
-    const result = fallbackClassify(text);
-    assert.equal(result.label,label,text);
-    assert.equal(result.confidence,confidence,text);
+  for (const clause of HEURISTIC_BATTERY) {
+    const result = fallbackClassify(clause.text);
+    assert.equal(result.label,clause.label,clause.text);
+    assert.equal(result.confidence,clause.confidence,clause.text);
     assert.equal(result.method,'api_heuristic_review_rules');
     assert.equal(result.calibrated,false);
   }
