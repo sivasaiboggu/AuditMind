@@ -1,16 +1,18 @@
 import { authenticatedFetch, sendAuthenticated } from '../lib/api';
+import { buildReportMarkdown, reportFileName } from '../lib/report';
 import { workspaceGuard } from '../lib/workspace-guard';
 import { chatHistory, interruptChat, INCOMPLETE_ANSWER } from '../lib/chat-stream';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useContractStore } from '../store/contractStore';
 import { useAuth } from '../lib/auth-context';
+import { useKeyboard } from '../hooks/useKeyboard';
 import { Navbar } from '../components/Navbar';
 import { Badge, Card, EmptyState, Skeleton } from '../components/ui';
 import type { BadgeTone } from '../components/ui';
 import { cn } from '../lib/utils';
-import { AlertTriangle, ArrowLeft, Send, FileEdit, MessageSquareCode, FileText, Copy, CheckCheck, Wifi, WifiOff, Bot } from 'lucide-react';
-import type { Clause, ChatMessage } from '@auditmind/shared-types';
+import { AlertTriangle, ArrowLeft, Send, FileEdit, MessageSquareCode, FileText, Copy, CheckCheck, Wifi, WifiOff, Bot, Download, Search, X, GitCompare, Check } from 'lucide-react';
+import type { Clause, ChatMessage, RiskLevel } from '@auditmind/shared-types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3000/ws';
@@ -32,7 +34,7 @@ export default function ContractView() {
   const [clausesLoading, setClausesLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedClause, setSelectedClause] = useState<Clause | null>(null);
-  const [activeTab, setActiveTab] = useState<'analysis' | 'chat'>('analysis');
+  const [activeTab, setActiveTab] = useState<'analysis' | 'chat' | 'compare'>('analysis');
   const [chatInput, setChatInput] = useState('');
   const [isChatGenerating, setIsChatGenerating] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
@@ -40,6 +42,94 @@ export default function ContractView() {
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const failPendingChat = useRef<(() => void) | null>(null);
+
+  // Review-panel controls: clause search, risk filter, compare mode.
+  const [clauseQuery, setClauseQuery] = useState('');
+  const [riskFilter, setRiskFilter] = useState<'all' | RiskLevel>('all');
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [exported, setExported] = useState(false);
+  const exportedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const filteredClauses = useMemo(() => {
+    const query = clauseQuery.trim().toLowerCase();
+    return activeClauses.filter((clause) => {
+      if (riskFilter !== 'all' && clause.riskLevel !== riskFilter) return false;
+      if (!query) return true;
+      return [clause.number, clause.title, clause.text]
+        .join(' ')
+        .toLowerCase()
+        .includes(query);
+    });
+  }, [activeClauses, clauseQuery, riskFilter]);
+
+  const compareClauses = useMemo(
+    () => compareIds
+      .map((id) => activeClauses.find((c) => c.id === id))
+      .filter((c): c is Clause => Boolean(c)),
+    [compareIds, activeClauses],
+  );
+
+  const riskCounts = useMemo(() => {
+    const counts: Record<RiskLevel, number> = { critical: 0, high: 0, medium: 0, low: 0 };
+    for (const clause of activeClauses) counts[clause.riskLevel] += 1;
+    return counts;
+  }, [activeClauses]);
+
+  const toggleCompare = (clause: Clause) => {
+    let next: string[];
+    if (compareIds.includes(clause.id)) {
+      next = compareIds.filter((id) => id !== clause.id);
+    } else if (compareIds.length >= 2) {
+      next = [compareIds[1], clause.id];
+    } else {
+      next = [...compareIds, clause.id];
+    }
+    setCompareIds(next);
+    if (next.length === 2) setActiveTab('compare');
+    else if (activeTab === 'compare') setActiveTab('analysis');
+  };
+
+  const exitCompareMode = () => {
+    setCompareMode(false);
+    setCompareIds([]);
+    setActiveTab('analysis');
+  };
+
+  // Arrow keys move the selection through the filtered clause list.
+  // Skipped while typing in an input or textarea.
+  useKeyboard('ArrowDown', () => {
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (filteredClauses.length === 0) return;
+    const idx = filteredClauses.findIndex((c) => c.id === selectedClause?.id);
+    setSelectedClause(filteredClauses[Math.min(idx + 1, filteredClauses.length - 1)]);
+  });
+  useKeyboard('ArrowUp', () => {
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (filteredClauses.length === 0) return;
+    const idx = filteredClauses.findIndex((c) => c.id === selectedClause?.id);
+    setSelectedClause(filteredClauses[Math.max(idx - 1, 0)]);
+  });
+
+  /** Download a Markdown risk report built only from this contract's own data. */
+  const handleExportReport = () => {
+    if (!activeContract) return;
+    const markdown = buildReportMarkdown(activeContract, activeClauses);
+    const blob = new Blob([markdown], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = reportFileName(activeContract);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setExported(true);
+    if (exportedTimer.current) clearTimeout(exportedTimer.current);
+    exportedTimer.current = setTimeout(() => setExported(false), 2500);
+  };
 
   const handleCopy = (id: string, text: string) => {
     navigator.clipboard.writeText(text);
@@ -62,6 +152,10 @@ export default function ContractView() {
     setWsConnected(false);
     setCopiedId(null);
     setActiveTab('analysis');
+    setClauseQuery('');
+    setRiskFilter('all');
+    setCompareMode(false);
+    setCompareIds([]);
     const current = useContractStore.getState().contracts.find(c => c.id === id);
     setActiveContract(current || null);
     setActiveClauses([]);
@@ -234,6 +328,18 @@ export default function ContractView() {
     }
   };
 
+  /** General next steps for a risk level — guidance, not legal advice,
+   *  and not specific to any one clause's wording. */
+  const NEXT_STEPS: Record<RiskLevel, string> = {
+    critical:
+      'Do not sign as written. Get a lawyer to review this clause and negotiate the suggested revision before proceeding.',
+    high:
+      'Negotiate this clause before signing. Use the suggested revision as a starting point and get any change in writing.',
+    medium:
+      'Ask the other party to clarify this clause in writing so its meaning is not left open to dispute.',
+    low: 'No action needed. This clause looks standard — keep it on file with the rest of the contract.',
+  };
+
   return (
     <div className="h-screen h-[100dvh] bg-background-base flex flex-col overflow-hidden">
       <Navbar currentView="analyzer" setView={(v) => navigate(v === 'dashboard' ? '/dashboard' : `/contract/${id}`)} onLogout={handleLogout} />
@@ -255,7 +361,17 @@ export default function ContractView() {
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 items-center">
+          <button
+            onClick={handleExportReport}
+            disabled={!activeContract || activeClauses.length === 0}
+            aria-label="Download a Markdown risk report for this contract"
+            title="Download a Markdown risk report for this contract"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-accent-cyan/30 bg-accent-cyan/10 hover:bg-accent-cyan/20 text-accent-cyan text-[11px] font-mono font-bold uppercase tracking-wider precise-transition disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {exported ? <Check className="w-3.5 h-3.5" /> : <Download className="w-3.5 h-3.5" />}
+            {exported ? 'Downloaded' : 'Export report'}
+          </button>
           <Badge tone="critical">
             Critical: {activeClauses.filter(c => c.riskLevel === 'critical').length}
           </Badge>
@@ -277,6 +393,71 @@ export default function ContractView() {
             <span className="text-xs font-mono font-bold text-text-secondary uppercase">
               Contract Clauses
             </span>
+            <span className="ml-auto text-[10px] font-mono text-text-muted">
+              {filteredClauses.length} of {activeClauses.length}
+            </span>
+          </div>
+
+          {/* Clause search, risk filter and compare toggle */}
+          <div className="border-b border-overlay/5 p-3 space-y-2 bg-background-panel/40">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="search"
+                value={clauseQuery}
+                onChange={(e) => setClauseQuery(e.target.value)}
+                placeholder="Search clauses by number, title or text…"
+                aria-label="Search clauses"
+                className="w-full bg-background-base border border-overlay/10 outline-none rounded-lg py-2 pl-9 pr-8 text-xs font-sans text-text-primary placeholder:text-text-muted/60 focus:border-accent-cyan/50 precise-transition"
+              />
+              {clauseQuery && (
+                <button
+                  onClick={() => setClauseQuery('')}
+                  aria-label="Clear clause search"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-text-muted hover:text-text-primary precise-transition"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter clauses by risk level">
+              {(['all', 'critical', 'high', 'medium', 'low'] as const).map((level) => (
+                <button
+                  key={level}
+                  onClick={() => setRiskFilter(level)}
+                  aria-pressed={riskFilter === level}
+                  className={cn(
+                    'px-2.5 py-1 rounded-full border text-[10px] font-mono font-bold uppercase tracking-wider precise-transition',
+                    riskFilter === level
+                      ? 'bg-accent-cyan/15 border-accent-cyan/40 text-accent-cyan'
+                      : 'border-overlay/10 text-text-muted hover:text-text-secondary hover:border-overlay/20',
+                  )}
+                >
+                  {level === 'all' ? `All (${activeClauses.length})` : `${level} (${riskCounts[level]})`}
+                </button>
+              ))}
+              <button
+                onClick={() => (compareMode ? exitCompareMode() : setCompareMode(true))}
+                aria-pressed={compareMode}
+                title="Pick two clauses to compare side by side"
+                className={cn(
+                  'ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-mono font-bold uppercase tracking-wider precise-transition',
+                  compareMode
+                    ? 'bg-accent-cyan/15 border-accent-cyan/40 text-accent-cyan'
+                    : 'border-overlay/10 text-text-muted hover:text-text-secondary hover:border-overlay/20',
+                )}
+              >
+                <GitCompare className="w-3 h-3" />
+                Compare{compareMode ? ` (${compareIds.length}/2)` : ''}
+              </button>
+            </div>
+            {compareMode && (
+              <p className="text-[10px] font-mono text-text-muted">
+                {compareIds.length < 2
+                  ? 'Pick two clauses to compare them side by side.'
+                  : 'Two clauses picked — open the Compare tab on the right.'}
+              </p>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -294,31 +475,55 @@ export default function ContractView() {
               <div className="p-12 text-center text-text-muted font-mono text-xs">
                 {loadError || (activeContract?.status === 'processing' ? 'Analysis is still processing. Return to the dashboard for status updates.' : activeContract?.status === 'failed' ? 'Analysis failed. No completed clause review is available.' : 'No clause results are available for this contract.')}
               </div>
+            ) : filteredClauses.length === 0 ? (
+              <EmptyState
+                icon={<Search className="w-6 h-6 text-text-muted/50" />}
+                title="No Clauses Match"
+                description="Try a different search term or clear the risk filter to see more clauses."
+              />
             ) : (
-              activeClauses.map((clause) => (
+              filteredClauses.map((clause) => {
+                const inCompare = compareIds.includes(clause.id);
+                return (
                 <Card
                   key={clause.id}
-                  onClick={() => setSelectedClause(clause)}
+                  onClick={() => (compareMode ? toggleCompare(clause) : setSelectedClause(clause))}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
-                      setSelectedClause(clause);
+                      if (compareMode) toggleCompare(clause);
+                      else setSelectedClause(clause);
                     }
                   }}
                   role="button"
                   tabIndex={0}
-                  aria-pressed={selectedClause?.id === clause.id}
-                  aria-label={`Select clause ${clause.number ? `${clause.number}: ` : ''}${clause.title}`}
+                  aria-pressed={compareMode ? inCompare : selectedClause?.id === clause.id}
+                  aria-label={compareMode
+                    ? `${inCompare ? 'Remove' : 'Add'} clause ${clause.number ? `${clause.number}: ` : ''}${clause.title} ${inCompare ? 'from' : 'to'} comparison`
+                    : `Select clause ${clause.number ? `${clause.number}: ` : ''}${clause.title}`}
                   className={cn(
                     'p-4 precise-transition cursor-pointer',
                     getRiskBorder(clause.riskLevel),
-                    selectedClause?.id === clause.id
+                    (compareMode ? inCompare : selectedClause?.id === clause.id)
                       ? 'border-accent-cyan bg-accent-cyan/5 shadow-[0_0_15px_rgba(0,229,255,0.03)]'
                       : 'border-overlay/5 hover:border-overlay/10 hover:bg-overlay/2',
                   )}
                 >
                   <div className="flex justify-between items-start gap-3 mb-2">
                     <span className="font-mono text-xs font-bold text-text-primary">
+                      {compareMode && (
+                        <span
+                          aria-hidden="true"
+                          className={cn(
+                            'inline-flex items-center justify-center w-4 h-4 mr-2 rounded border align-middle',
+                            inCompare
+                              ? 'bg-accent-cyan border-accent-cyan text-background-base'
+                              : 'border-overlay/20 text-transparent',
+                          )}
+                        >
+                          <Check className="w-3 h-3" />
+                        </span>
+                      )}
                       {clause.number ? `[${clause.number}]` : ''} {clause.title}
                     </span>
                     <Badge tone={getRiskTone(clause.riskLevel)}>{clause.riskLevel}</Badge>
@@ -327,18 +532,20 @@ export default function ContractView() {
                     {clause.text}
                   </p>
                 </Card>
-              ))
+                );
+              })
             )}
           </div>
         </div>
 
         {/* Right Side — Tab Layout */}
         <div className="w-full md:w-1/2 min-w-0 min-h-0 flex-1 flex flex-col bg-background-panel/50 overflow-hidden">
-          {selectedClause ? (
+          {selectedClause || compareClauses.length === 2 ? (
             <div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
 
               {/* Tab Bar */}
               <div className="border-b border-overlay/5 flex flex-wrap items-center bg-background-panel/80 px-2 sm:px-4 gap-1 pt-2 flex-shrink-0">
+                {selectedClause && (
                 <button
                   onClick={() => setActiveTab('analysis')}
                   aria-pressed={activeTab === 'analysis'}
@@ -351,6 +558,8 @@ export default function ContractView() {
                   <FileText className="w-3 h-3" />
                   Analysis
                 </button>
+                )}
+                {selectedClause && (
                 <button
                   onClick={() => setActiveTab('chat')}
                   aria-pressed={activeTab === 'chat'}
@@ -368,6 +577,21 @@ export default function ContractView() {
                     </span>
                   )}
                 </button>
+                )}
+                {compareClauses.length === 2 && (
+                  <button
+                    onClick={() => setActiveTab('compare')}
+                    aria-pressed={activeTab === 'compare'}
+                    className={`px-4 py-2 text-xs font-mono font-bold uppercase tracking-wider rounded-t border-b-2 precise-transition flex items-center gap-1.5 ${
+                      activeTab === 'compare'
+                        ? 'text-text-primary border-accent-cyan bg-accent-cyan/5'
+                        : 'text-text-muted border-transparent hover:text-text-secondary hover:border-overlay/20'
+                    }`}
+                  >
+                    <GitCompare className="w-3 h-3" />
+                    Compare
+                  </button>
+                )}
 
                 {/* Right-side status badge in tab bar */}
                 <div className="ml-auto flex items-center gap-2 mb-1">
@@ -383,7 +607,7 @@ export default function ContractView() {
               </div>
 
               {/* Analysis Tab */}
-              {activeTab === 'analysis' && (
+              {activeTab === 'analysis' && selectedClause && (
                 <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-5 break-words">
                   <div className="flex flex-wrap gap-3 justify-between items-start border-b border-overlay/5 pb-4">
                     <div>
@@ -437,6 +661,21 @@ export default function ContractView() {
                     </div>
                   )}
 
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Check className="w-4 h-4 text-accent-cyan" />
+                      <span className="text-[10px] font-mono text-text-primary uppercase tracking-widest">
+                        What To Do Next
+                      </span>
+                    </div>
+                    <div className="p-4 bg-accent-cyan/5 border border-accent-cyan/10 rounded-lg font-sans text-sm text-text-secondary leading-relaxed">
+                      {NEXT_STEPS[selectedClause.riskLevel]}
+                      <span className="block mt-2 text-[10px] font-mono text-text-muted">
+                        General guidance for this risk level — not legal advice.
+                      </span>
+                    </div>
+                  </div>
+
                   {/* Quick Chat CTA */}
                   <button
                     onClick={() => setActiveTab('chat')}
@@ -448,8 +687,67 @@ export default function ContractView() {
                 </div>
               )}
 
+              {/* Compare Tab — two clauses side by side */}
+              {activeTab === 'compare' && compareClauses.length === 2 && (
+                <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-5 break-words">
+                  <div className="flex flex-wrap gap-3 justify-between items-start border-b border-overlay/5 pb-4">
+                    <div>
+                      <span className="font-mono text-xs text-accent-cyan uppercase tracking-widest block mb-1">
+                        Clause Comparison
+                      </span>
+                      <h3 className="text-lg font-mono font-bold text-text-primary">
+                        {compareClauses[0].number || compareClauses[0].title} vs{' '}
+                        {compareClauses[1].number || compareClauses[1].title}
+                      </h3>
+                    </div>
+                    <button
+                      onClick={exitCompareMode}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-overlay/10 hover:border-overlay/20 text-text-muted hover:text-text-primary text-[11px] font-mono font-bold uppercase tracking-wider precise-transition"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      Clear
+                    </button>
+                  </div>
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    {compareClauses.map((clause) => (
+                      <article key={clause.id} className={cn('rounded-lg border border-overlay/10 p-4 space-y-3', getRiskBorder(clause.riskLevel))}>
+                        <div className="flex justify-between items-start gap-3">
+                          <h4 className="font-mono text-xs font-bold text-text-primary">
+                            {clause.number ? `${clause.number}: ` : ''}{clause.title}
+                          </h4>
+                          <Badge tone={getRiskTone(clause.riskLevel)}>{clause.riskLevel}</Badge>
+                        </div>
+                        <p className="text-xs text-text-secondary font-sans leading-relaxed">{clause.text}</p>
+                        <div>
+                          <span className="text-[10px] font-mono text-text-secondary uppercase tracking-widest block mb-1">
+                            Risk Explanation
+                          </span>
+                          <p className="text-xs text-text-secondary font-sans leading-relaxed">{clause.riskExplanation}</p>
+                        </div>
+                        {clause.suggestedRedline && (
+                          <div>
+                            <span className="text-[10px] font-mono text-text-secondary uppercase tracking-widest block mb-1">
+                              Suggested Revision
+                            </span>
+                            <p className="text-xs text-risk-low font-sans leading-relaxed border-l-2 border-risk-low/30 pl-3 italic">
+                              {clause.suggestedRedline}
+                            </p>
+                          </div>
+                        )}
+                        <p className="text-xs text-text-secondary font-sans leading-relaxed">
+                          <span className="text-[10px] font-mono text-text-secondary uppercase tracking-widest block mb-1">
+                            What To Do Next
+                          </span>
+                          {NEXT_STEPS[clause.riskLevel]}
+                        </p>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Chat Tab — full height */}
-              {activeTab === 'chat' && (
+              {activeTab === 'chat' && selectedClause && (
                 <div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
                   {/* Chat context pill */}
                   <div className="px-4 py-2 flex-shrink-0 border-b border-overlay/5 bg-background-base/20">

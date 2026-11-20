@@ -12,7 +12,7 @@ function routeEffect(fetch,ownerCurrent=()=>true){
  const start=source.indexOf('  useEffect(() => {',source.indexOf('// Scope each load'));
  const end=source.indexOf('\n\n  // 2. Configure',start);let effect;const calls=[];
  const context={user:{id:'owner'},workspaceGuard:()=>ownerCurrent,useEffect:fn=>effect=fn,id:'a',useContractStore:{getState:()=>({contracts:[{id:'a'}]})},authenticatedFetch:fetch,API_URL:'synthetic',console:{error(){}},navigate:x=>calls.push(['navigate',x])};
- for(const name of ['setClausesLoading','setLoadError','setSelectedClause','setChatInput','setIsChatGenerating','setWsConnected','setCopiedId','setActiveTab','setActiveContract','setActiveClauses','setContracts'])context[name]=value=>calls.push([name,value]);
+ for(const name of ['setClausesLoading','setLoadError','setSelectedClause','setChatInput','setIsChatGenerating','setWsConnected','setCopiedId','setActiveTab','setActiveContract','setActiveClauses','setContracts','setClauseQuery','setRiskFilter','setCompareMode','setCompareIds'])context[name]=value=>calls.push([name,value]);
  vm.runInNewContext(ts.transpileModule(source.slice(start,end),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText,context);return {cleanup:effect(),calls};
 }
 const tick=()=>new Promise(resolve=>setImmediate(resolve));

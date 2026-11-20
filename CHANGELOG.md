@@ -2,6 +2,18 @@
 All notable changes will be documented here.
 
 ## Unreleased
+- One-click report export: the contract view can download a Markdown risk
+  report (overall score, per-level counts, every clause with its text,
+  risk explanation and suggested revision, plus a "not legal advice"
+  note) built only from the contract's own analysed data.
+- Clause compare: pick any two clauses to view them side by side with
+  their risk level, explanation, suggested revision and next steps.
+- Clause search and risk filter chips on the review panel, with a live
+  "X of Y clauses" count, plus Arrow Up / Arrow Down keyboard navigation
+  through the filtered list.
+- Each clause analysis now ends with a "What to do next" box: general
+  next steps for its risk level, labelled as guidance rather than legal
+  advice.
 - Clause lists now order naturally by clause number ("Section 2" before
   "Section 10", Roman numerals by value, Preamble first) instead of the
   database's lexicographic text order, which also sliced paginated
