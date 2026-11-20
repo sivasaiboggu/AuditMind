@@ -1,13 +1,24 @@
 import os
 import uvicorn
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-from risk_rules import compute_local_heuristics, validated_risk_prediction
+from risk_rules import compute_local_heuristics, count_heuristic_matches, validated_risk_prediction
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # @app.on_event("startup") is deprecated; the lifespan hook is the
+    # supported way to load the optional model exactly once.
+    load_model()
+    yield
+
 
 app = FastAPI(
     title="AuditMind ML Legal-NLP Microservice",
     description="Contract review rules with optional explicit-label risk model inference",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Clauses are contract paragraphs, not whole documents. Without a bound, one
@@ -25,7 +36,7 @@ class ClauseInput(BaseModel):
 MODEL_NAME = os.getenv("MODEL_NAME", "").strip()
 classifier_pipeline = None
 
-@app.on_event("startup")
+
 def load_model():
   global classifier_pipeline
   classifier_pipeline = None
@@ -47,6 +58,20 @@ def load_model():
   except Exception:
     # Do not leak paths/provider errors. Rule provenance is returned below.
     classifier_pipeline = None
+
+
+@app.get("/health")
+def health():
+  return {
+      "status": "healthy",
+      "service": "AuditMind ML service",
+      "version": "1.0.0",
+      "model": MODEL_NAME or None,
+      "model_loaded": classifier_pipeline is not None,
+      "method": "configured_risk_model" if classifier_pipeline is not None else "heuristic_review_rules",
+      "calibrated": False,
+  }
+
 
 @app.post("/classify-clause")
 def classify_clause(payload: ClauseInput):
@@ -87,7 +112,7 @@ def risk_score(payload: ClauseInput):
     raise HTTPException(status_code=400, detail="Empty clause text")
 
   label, conf = compute_local_heuristics(payload.text)
-  
+
   # Base scores
   base_scores = {
       "critical": 82,
@@ -95,14 +120,20 @@ def risk_score(payload: ClauseInput):
       "medium": 45,
       "low": 18
   }
-  
+
   base = base_scores.get(label, 15)
   # Adjust slightly based on word count/complexity
   length_mod = min(15, len(payload.text.split()) // 8)
-  
-  final_score = min(100, base + length_mod)
+  # A clause tripping several independent review patterns deserves a higher
+  # review priority than a clause tripping one: +3 per extra distinct
+  # signal, capped at +9. Mirrors the TypeScript fallback in ml.ts exactly.
+  signals = count_heuristic_matches(payload.text)
+  signal_mod = 3 * min(3, max(0, signals - 1)) if signals > 0 else 0
+
+  final_score = min(100, base + length_mod + signal_mod)
   return {
       "score": final_score,
+      "signals": signals,
       "model": "risk_scoring_matrix_v1",
       "method": "heuristic_review_rules",
       "calibrated": False

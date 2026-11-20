@@ -9,7 +9,7 @@ const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {
 const run=(code,context)=>vm.runInNewContext(ts.transpileModule(code,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText,context);
 function dashboard(){
  let effect,alive=true,listener;const requests=[],writes=[],notifications=[];
- const context={refreshVersion:0,user:{id:'a'},workspaceGuard:()=>()=>alive,useRef:value=>({current:value}),useEffect:fn=>effect=fn,setNotification:x=>notifications.push(x),setContracts:x=>writes.push(x),API_URL:'synthetic',authenticatedFetch:()=>{const d=deferred();requests.push(d);return d.promise;},supabase:{channel:()=>({on(_t,_filter,fn){listener=fn;return this;},subscribe(){return this;}}),removeChannel(){}}};
+ const context={refreshVersion:0,user:{id:'a'},workspaceGuard:()=>()=>alive,useRef:value=>({current:value}),useEffect:fn=>effect=fn,setNotification:x=>notifications.push(x),setContracts:x=>writes.push(x),setHasLoaded:()=>{},API_URL:'synthetic',authenticatedFetch:()=>{const d=deferred();requests.push(d);return d.promise;},supabase:{channel:()=>({on(_t,_filter,fn){listener=fn;return this;},subscribe(){return this;}}),removeChannel(){}}};
  const text=source('pages/dashboard.tsx');run(text.slice(text.indexOf('  const listRead'),text.indexOf('  // Compute stats')),context);
  return {requests,writes,notifications,cleanup:effect(),invalidate:()=>alive=false,refresh:()=>listener({eventType:'DELETE',new:{}})};
 }

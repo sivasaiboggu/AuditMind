@@ -4,6 +4,7 @@ import multipart from '@fastify/multipart';
 import websocket from '@fastify/websocket';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { randomUUID } from 'crypto';
+import { z } from 'zod';
 import { initializeQueue, enqueueContractJob, setProgressListener } from './services/queue.js';
 import { streamChatWithGemini } from './services/gemini.js';
 import { installContractAuth, ownedContract, verifiedUserId } from './security.js';
@@ -17,6 +18,40 @@ export interface AppDependencies {
   registerProgress?: typeof setProgressListener;
 }
 
+/** CORS origins must be explicit http(s) origins. A FRONTEND_URL of "*" or
+ * a non-URL value would silently allow any site to call the API with the
+ * user's credentials, so invalid values are dropped, never trusted. */
+export function resolveCorsOrigins(): string[] {
+  const candidates = [
+    'http://localhost:5173',
+    'http://localhost:4173',
+    process.env.FRONTEND_URL || 'http://localhost:5173'
+  ];
+  const origins: string[] = [];
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string') continue;
+    const trimmed = candidate.trim().replace(/\/+$/, '');
+    if (trimmed === '*' || !/^https?:\/\/[^/]+$/.test(trimmed)) {
+      if (candidate.trim()) console.warn(`Ignoring invalid CORS origin: ${candidate}`);
+      continue;
+    }
+    if (!origins.includes(trimmed)) origins.push(trimmed);
+  }
+  return origins.length > 0 ? origins : ['http://localhost:5173'];
+}
+
+/** Bounded list pagination: unbounded selects returned every row a user
+ * ever uploaded. Defaults keep existing callers unchanged. */
+const paginationSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).max(100000).default(0),
+});
+
+function parsePagination(req: { query: unknown }): { limit: number; offset: number } | null {
+  const parsed = paginationSchema.safeParse(req.query ?? {});
+  return parsed.success ? parsed.data : null;
+}
+
 /** Build the real routes without listening, allowing isolated integration tests. */
 export async function buildApp(deps: AppDependencies = {}) {
 const url = process.env.SUPABASE_URL || '';
@@ -27,6 +62,21 @@ const streamChat = deps.streamChat || streamChatWithGemini;
 const app = fastify({ logger: true });
 installContractAuth(app, supabase);
 
+// One error shape everywhere: { error }. Fastify's default validation and
+// 404 bodies ({ statusCode, error, message }) leaked through before, so
+// clients saw two shapes and 5xx details. Server faults stay generic.
+app.setErrorHandler((error, _req, reply) => {
+  const status = typeof (error as { statusCode?: unknown }).statusCode === 'number'
+    ? (error as { statusCode: number }).statusCode : 500;
+  if (status >= 500) app.log.error(error);
+  reply.status(status).send({
+    error: status >= 500 ? 'Internal server error.' : (error.message || 'Invalid request.'),
+  });
+});
+app.setNotFoundHandler((_req, reply) => {
+  reply.status(404).send({ error: 'Route not found.' });
+});
+
 // Registry of active WS clients by contract ID subscription
 const progressSubscriptions = new Map<string, Set<any>>();
 
@@ -35,11 +85,7 @@ await (deps.initialize || initializeQueue)();
 
 // Register plugins
 await app.register(cors, {
-  origin: [
-    'http://localhost:5173',
-    'http://localhost:4173',
-    process.env.FRONTEND_URL || 'http://localhost:5173'
-  ],
+  origin: resolveCorsOrigins(),
   credentials: true
 });
 await app.register(multipart, { limits: { fileSize: 15 * 1024 * 1024 } });
@@ -76,9 +122,16 @@ app.get('/health', async () => {
 
 // Upload Contract File
 app.post('/contracts/upload', async (req, reply) => {
-  const data = await req.file();
-  if (!data) {
-    return reply.status(400).send({ error: 'No file uploaded' });
+  // A truncated or malformed multipart body throws inside req.file() /
+  // toBuffer(); without this the framework answered 500 for a client error.
+  let data: Awaited<ReturnType<typeof req.file>>;
+  let buffer: Buffer;
+  try {
+    data = await req.file();
+    if (!data) return reply.status(400).send({ error: 'No file uploaded' });
+    buffer = await data.toBuffer();
+  } catch {
+    return reply.status(400).send({ error: 'The uploaded file could not be read. Upload a complete PDF, DOCX or plain-text file.' });
   }
 
   const userId = req.authenticatedUserId!;
@@ -88,11 +141,12 @@ app.post('/contracts/upload', async (req, reply) => {
   if (!['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'].includes(mimeType)) {
     return reply.code(415).send({error:'Unsupported document type. Use PDF, DOCX or plain text.'});
   }
-  const buffer = await data.toBuffer();
   if (buffer.length === 0) return reply.code(400).send({error:'The uploaded file is empty.'});
-  const fileName = data.filename.split(/[\\/]/).pop()!.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-120) || 'contract';
-
-  console.log(`// Ingesting contract: ${fileName} (${mimeType})`);
+  // Strip path separators, then anything unsafe; '.' and '..' on their own
+  // are not filenames, and a name of only dots would make a confusing key.
+  const rawName = (data.filename || '').split(/[\\/]/).pop() || '';
+  const cleaned = rawName.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^\.+$/, '').slice(-120);
+  const fileName = cleaned || 'contract';
 
   let filePath = `contracts/${contractId}-${fileName}`;
 
@@ -179,16 +233,17 @@ app.get('/contracts', async (req, reply) => {
   }
 
   const userId = req.authenticatedUserId!;
-
-  if (!userId) {
-    return [];
+  const pagination = parsePagination(req);
+  if (!pagination) {
+    return reply.status(400).send({ error: 'Invalid pagination parameters. Use limit 1-100 and offset 0 or more.' });
   }
 
   const { data, error } = await supabase
     .from('contracts')
     .select('*')
     .eq('user_id', userId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .range(pagination.offset, pagination.offset + pagination.limit - 1);
 
   if (error) return reply.status(500).send({ error: 'The database request could not be completed.' });
   return data.map(item => ({
@@ -251,10 +306,16 @@ app.get('/contracts/:id/clauses', async (req, reply) => {
   if (!contract) return reply.code(404).send({ error: 'Contract not found.' });
   if (contract.status !== 'completed') return reply.code(409).send({ error: 'Completed clause results are not available.' });
 
+  const pagination = parsePagination(req);
+  if (!pagination) {
+    return reply.status(400).send({ error: 'Invalid pagination parameters. Use limit 1-100 and offset 0 or more.' });
+  }
+
   const { data, error } = await supabase
     .from('clauses')
     .select('*')
-    .eq('contract_id', id).order('number', { ascending: true });
+    .eq('contract_id', id).order('number', { ascending: true })
+    .range(pagination.offset, pagination.offset + pagination.limit - 1);
 
   if (error) return reply.status(500).send({ error: 'The database request could not be completed.' });
   return data.map(c => ({
@@ -351,8 +412,7 @@ app.route({
           }
         }
 
-        else if (payload.type === 'chat') {
-          const { contractId, messages } = payload;
+        else if (payload.type === 'chat') {          const { contractId, messages } = payload;
           if (contract.status !== 'completed') throw new Error('Contract analysis is not complete.');
           if (!Array.isArray(messages) || messages.length === 0 || messages.length > 40 ||
               messages.some(item => !item || !['user', 'model'].includes(item.role) ||
@@ -385,6 +445,10 @@ app.route({
           send({
             type: 'chat_end'
           });
+        } else {
+          // An authenticated but unknown message type used to be swallowed
+          // silently; say so instead of leaving the client waiting.
+          send({ type: 'error', message: 'Unsupported message type.' });
         }
       } catch (err) {
         console.error('WebSocket message could not be processed.');

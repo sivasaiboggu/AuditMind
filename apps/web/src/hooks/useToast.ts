@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 
-interface Toast {
+export interface Toast {
   id: string;
   message: string;
   type: 'success' | 'error' | 'info';

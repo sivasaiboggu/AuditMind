@@ -32,3 +32,52 @@ test('malformed corpus rows are not rendered as authority',async()=>{
   const {deps}=fixture({embedding:[1],vectorRows:[{title:null,content:42}]});
   assert.match(await retrieveRegulations('liability',deps),/No verified/);
 });
+
+test('near-identical vector excerpts are returned once, not as two sources',async()=>{
+  const {deps}=fixture({embedding:[1],vectorRows:[
+    {title:'Synthetic A',content:'The quick brown fox jumps over the lazy dog in this regulation text.'},
+    {title:'Synthetic B',content:'The quick brown fox jumps over the lazy dog in this regulation text!'},
+    {title:'Synthetic C',content:'A wholly different provision about payment terms applies here.'},
+  ]});
+  const text=await retrieveRegulations('liability',deps);
+  assert.equal(text.match(/quick brown fox/g).length,1);
+  assert.match(text,/wholly different provision/);
+});
+
+test('vector rows below the similarity threshold fall back to keywords',async()=>{
+  const {effects,deps}=fixture({embedding:[1],
+    vectorRows:[{title:'Weak',content:'Weak similarity excerpt',similarity:0.1}],
+    keywordRows:[{title:'Keyword',content:'Keyword excerpt'}]});
+  const text=await retrieveRegulations('liability',deps);
+  assert.match(text,/Keyword excerpt/);
+  assert.doesNotMatch(text,/Weak similarity/);
+  assert.equal(effects.keywords,1);
+});
+
+test('vector rows at or above the threshold are used without keyword search',async()=>{
+  const {effects,deps}=fixture({embedding:[1],
+    vectorRows:[{title:'Strong',content:'Strong similarity excerpt',similarity:0.9}],
+    keywordRows:[{title:'Keyword',content:'Keyword excerpt'}]});
+  const text=await retrieveRegulations('liability',deps);
+  assert.match(text,/Strong similarity excerpt/);
+  assert.equal(effects.keywords,0);
+});
+
+test('malformed vector rows fall back to the keyword corpus',async()=>{
+  const {deps}=fixture({embedding:[1],vectorRows:[{title:null,content:42}],
+    keywordRows:[{title:'Keyword',content:'Keyword excerpt'}]});
+  assert.match(await retrieveRegulations('liability',deps),/Keyword excerpt/);
+});
+
+test('keyword fallback drops generic contract stopwords',async()=>{
+  const {effects,deps}=fixture({keywordRows:[{title:'Synthetic',content:'Synthetic excerpt'}]});
+  await retrieveRegulations('the party shall review liability terms',deps);
+  assert.equal(effects.terms,'review | liability | terms');
+});
+
+test('one oversized corpus row cannot blow up the retrieved context',async()=>{
+  const {deps}=fixture({embedding:[1],vectorRows:[{title:'Huge',content:'x'.repeat(5000)}]});
+  const text=await retrieveRegulations('liability',deps);
+  assert.ok(text.length < 6500);
+  assert.match(text,/\[...\]/);
+});

@@ -57,3 +57,49 @@ test('numeric headings with markers, dotted forms and titles still segment',()=>
   assert.equal(result[1].number,'Section 3.1');
   assert.equal(result[2].number,'Section 4');
 });
+
+test('hyphenated line wraps rejoin so wrapped words still match risk patterns',()=>{
+  const result=segmentClauses('Section 1 Confidentiality\nThe confi-\ndentiality clause applies.');
+  assert.equal(result.length,1);
+  assert.match(result[0].text,/confidentiality clause/);
+  assert.doesNotMatch(result[0].text,/confi-/);
+});
+
+test('spaced dashes and sentence breaks are not dehyphenated',()=>{
+  const result=segmentClauses('Section 1 Term\nThe term -\nrenewal is separate.');
+  assert.equal(result.length,1);
+  assert.match(result[0].text,/term -\nrenewal/);
+});
+
+test('exact duplicate clauses are dropped instead of double-counted',()=>{
+  const result=segmentClauses('Section 1 Payment\nPay now.\nSection 1 Payment\nPay now.');
+  assert.equal(result.length,1);
+  assert.equal(result[0].text,'Section 1 Payment\nPay now.');
+});
+
+test('repeated section numbers with different text are disambiguated',()=>{
+  const result=segmentClauses('Section 1 Payment\nPay now.\nSection 1 Refund\nRefund later.');
+  assert.equal(result.length,2);
+  assert.equal(result[0].number,'Section 1');
+  assert.equal(result[1].number,'Section 1 (2)');
+  assert.equal(result[1].text,'Section 1 Refund\nRefund later.');
+});
+
+test('four-digit years at a line start are dates, not section numbers',()=>{
+  const result=segmentClauses('2024. Revenue grew.\nSection 1 Payment\nPay now.');
+  assert.equal(result.length,2);
+  assert.equal(result[0].number,'Preamble');
+  assert.equal(result[0].text,'2024. Revenue grew.');
+  assert.equal(segmentClauses('2024 Revenue grew sharply.').length,1);
+});
+
+test('oversized input and empty buffers are rejected, not scanned',async()=>{
+  assert.throws(()=>segmentClauses('x'.repeat(1_000_001)),/review size limit/);
+  await assert.rejects(extractText(Buffer.alloc(0),'text/plain'),/empty/);
+  await assert.rejects(extractText(Buffer.alloc(15*1024*1024+1),'text/plain'),/15 MB/);
+});
+
+test('more than 500 distinct clauses exceeds the review limit',()=>{
+  const text=Array.from({length:501},(_,i)=>`Section ${i+1} Clause`).join('\n');
+  assert.throws(()=>segmentClauses(text),/500/);
+});

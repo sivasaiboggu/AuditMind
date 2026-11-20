@@ -8,7 +8,7 @@ export function riskLevelToColorClass(level: string): string {
     case 'high':     return 'text-risk-high bg-risk-high/10 border-risk-high/30';
     case 'medium':   return 'text-risk-medium bg-risk-medium/10 border-risk-medium/30';
     case 'low':      return 'text-risk-low bg-risk-low/10 border-risk-low/30';
-    default:         return 'text-text-muted bg-white/5 border-white/10';
+    default:         return 'text-text-muted bg-overlay/5 border-overlay/10';
   }
 }
 

@@ -53,5 +53,41 @@ class RiskBoundaryTests(unittest.TestCase):
         self.assertEqual(compute_local_heuristics('indemnify for negligence')[0], 'critical')
         self.assertEqual(compute_local_heuristics('confidentiality')[0], 'medium')
 
+    def test_empty_and_non_string_input_rejected_not_low_risk(self):
+        for bad in ['', '   ', None, 123, b'indemnify']:
+            with self.subTest(text=bad), self.assertRaises(ValueError):
+                compute_local_heuristics(bad)
+
+    def test_word_family_inflections_match(self):
+        self.assertEqual(compute_local_heuristics('indemnification obligations of the parties')[0], 'high')
+        self.assertEqual(compute_local_heuristics('confidential information must not be disclosed')[0], 'medium')
+        self.assertEqual(compute_local_heuristics('the company may terminate this agreement without notice')[0], 'medium')
+
+    def test_hyphenated_variants_match(self):
+        self.assertEqual(compute_local_heuristics('this agreement shall auto-renew each year')[0], 'medium')
+        self.assertEqual(compute_local_heuristics('the licence shall auto renew each year')[0], 'medium')
+        self.assertEqual(compute_local_heuristics('force-majeure event')[0], 'medium')
+        self.assertEqual(compute_local_heuristics('a non-compete for two years')[0], 'high')
+        self.assertEqual(compute_local_heuristics('a non compete clause')[0], 'high')
+
+    def test_unlimited_liability_is_high(self):
+        self.assertEqual(compute_local_heuristics('unlimited liability for all losses')[0], 'high')
+
+    def test_distant_cooccurrence_does_not_escalate(self):
+        # "perpetual" and "irrevocable" in unrelated sentences of one long
+        # clause must not make it critical; the two-part bound is 200 chars.
+        far = 'perpetual license ' + 'filler ' * 40 + 'irrevocable terms'
+        self.assertEqual(compute_local_heuristics(far)[0], 'low')
+        near = 'perpetual license with an irrevocable grant'
+        self.assertEqual(compute_local_heuristics(near)[0], 'critical')
+
+    def test_count_heuristic_matches_counts_distinct_patterns(self):
+        from risk_rules import count_heuristic_matches
+        self.assertEqual(count_heuristic_matches('ordinary delivery clause'), 0)
+        self.assertEqual(count_heuristic_matches('indemnify sole discretion governing law'), 3)
+        # 'indemnify for negligence' trips both the critical two-part rule
+        # and the bare indemnity rule: two distinct signals.
+        self.assertEqual(count_heuristic_matches('indemnify for negligence'), 2)
+
 if __name__ == '__main__':
     unittest.main()

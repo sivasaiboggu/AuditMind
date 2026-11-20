@@ -47,7 +47,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
             </div>
 
             {this.state.error && (
-              <div className="bg-background-panel border border-white/5 rounded-lg p-4 text-left">
+              <div className="bg-background-panel border border-overlay/5 rounded-lg p-4 text-left">
                 <p className="font-mono text-[10px] text-text-muted uppercase tracking-widest mb-2">Error Details</p>
                 <p className="font-mono text-xs text-risk-critical break-all">
                   {this.state.error.message}

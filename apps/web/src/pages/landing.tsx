@@ -1,11 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth-context';
-import { ArrowRight, Cpu, FileText, Shield } from 'lucide-react';
+import { useTheme } from '../lib/theme';
+import { ArrowRight, Cpu, FileText, Shield, Moon, Sun } from 'lucide-react';
 
 export default function Landing() {
   const navigate = useNavigate();
   const { user, loading } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Auto-redirect if session is active
@@ -45,11 +47,15 @@ export default function Landing() {
     let animationFrameId: number;
 
     function animate() {
-      ctx.fillStyle = '#111111';
+      // Read the theme tokens each frame so the canvas follows a theme toggle.
+      const rootStyles = getComputedStyle(document.documentElement);
+      const canvasBg = rootStyles.getPropertyValue('--canvas-bg').trim() || '#111111';
+      const gridStroke = rootStyles.getPropertyValue('--canvas-grid').trim() || 'rgba(255,255,255,0.01)';
+      ctx.fillStyle = canvasBg;
       ctx.fillRect(0, 0, width, height);
 
       // Draw faint technical grids
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.01)';
+      ctx.strokeStyle = gridStroke;
       ctx.lineWidth = 1;
       const step = 60;
       for (let x = 0; x < width; x += step) {
@@ -118,10 +124,10 @@ export default function Landing() {
       <div className="absolute bottom-[25%] right-[10%] w-[500px] h-[500px] ambient-glow-violet -z-20 pointer-events-none"></div>
 
       {/* Grid Scanline Overlay */}
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.15)_50%)] bg-[length:100%_4px] pointer-events-none z-1"></div>
+      <div className="scanlines absolute inset-0 pointer-events-none z-1"></div>
 
       {/* Header */}
-      <header className="border-b border-white/5 bg-background-base/20 backdrop-blur-md z-10">
+      <header className="border-b border-overlay/5 bg-background-base/20 backdrop-blur-md z-10">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="relative w-8 h-8 rounded bg-background-base border border-accent-cyan/25 text-accent-cyan flex items-center justify-center shadow-[0_0_15px_rgba(0,229,255,0.12)]">
@@ -138,6 +144,15 @@ export default function Landing() {
             </span>
           </div>
 
+          <button
+            onClick={toggleTheme}
+            aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            aria-pressed={theme === 'dark'}
+            title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            className="p-2 rounded text-text-muted hover:text-text-primary hover:bg-overlay/5 border border-transparent hover:border-overlay/10 precise-transition"
+          >
+            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
         </div>
       </header>
 
@@ -152,7 +167,7 @@ export default function Landing() {
           <h1 className="display-lg text-[36px] leading-[36px] md:text-[48px] md:leading-[48px] font-normal tracking-[-0.025em] mb-6 text-text-primary uppercase-none">
             Contract risk analysis
             <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent-cyan via-cyan-300 to-indigo-400">
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent-cyan via-accent-tertiary to-indigo-400">
               backed by deep learning.
             </span>
           </h1>
@@ -167,7 +182,7 @@ export default function Landing() {
             <Link to="/login" className="px-6 py-3 rounded bg-accent-cyan hover:bg-accent-cyan/90 text-background-base font-mono font-bold text-sm precise-transition flex items-center gap-2 shadow-[0_0_25px_rgba(0,229,255,0.35)]">
               Start Analysis <ArrowRight className="w-4 h-4" />
             </Link>
-            <Link to="/login" className="px-6 py-3 rounded text-text-primary font-mono text-sm border border-white/10 precise-transition flex items-center glass-button">
+            <Link to="/login" className="px-6 py-3 rounded text-text-primary font-mono text-sm border border-overlay/10 precise-transition flex items-center glass-button">
               View Demo Report
             </Link>
           </div>
@@ -206,7 +221,7 @@ export default function Landing() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-white/5 py-6 text-center text-[10px] font-mono text-text-muted z-10">
+      <footer className="border-t border-overlay/5 py-6 text-center text-[10px] font-mono text-text-muted z-10">
         AUDITMIND Compliance Engine // Portions protected by security tokens.
       </footer>
     </div>

@@ -1,7 +1,7 @@
 import { extractText, segmentClauses } from './parser.js';
-import { classifyClauseRisk, getRiskScore } from './ml.js';
-import { retrieveRegulations } from './rag.js';
-import { analyzeClauseWithGemini, validateContractWithGemini } from './gemini.js';
+import { classifyClauseRisk, getRiskScore, type MLClassification } from './ml.js';
+import { retrieveRegulations, UNAVAILABLE_CONTEXT } from './rag.js';
+import { analyzeClauseWithGemini, validateContractWithGemini, type ClauseAnalysisResult } from './gemini.js';
 import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -26,7 +26,34 @@ function updateProgress(contractId: string, stage: string, percent: number, mess
   }
 }
 
-/** Database job ledger is authoritative, created with contract metadata by trigger. */
+/** Gemini is optional: when the explanation provider is unavailable, the
+ * clause still completes with a clearly labelled rule-based summary instead
+ * of failing the whole contract. It never invents an AI assessment, a legal
+ * conclusion or a redline — the explanation says so, and the redline field
+ * says no automated redline was generated. Any other provider failure
+ * (garbage response, invalid assessment) still fails the run. */
+export function ruleBasedAnalysis(
+  classification: MLClassification,
+  item: { title: string; text: string },
+  regContext: string
+): ClauseAnalysisResult {
+  const signal = classification.signal ? ` It matched the review pattern "${classification.signal}".` : '';
+  const contextNote = regContext && regContext !== UNAVAILABLE_CONTEXT
+    ? ' Retrieved regulatory excerpts are included as context only; applicability has not been verified.'
+    : '';
+  return {
+    explanation:
+      `Rule-based review summary — no AI assessment was performed. This clause was flagged as ${classification.label} risk by the heuristic review rules.${signal} Review the original clause text directly and seek qualified counsel before relying on it.${contextNote}`,
+    suggestedRedline:
+      'No automated redline was generated because the explanation service was unavailable. Ask qualified counsel to draft a safer version.',
+  };
+}
+
+function isGeminiUnavailable(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  if ((error as { code?: unknown }).code === 'GEMINI_UNAVAILABLE') return true;
+  return /not configured|quota|rate limit|429|503|unavailable/i.test(String((error as Error).message ?? ''));
+}
 let workerStarted = false;
 export async function initializeQueue() {
   if (!supabase || workerStarted) return;
@@ -107,6 +134,8 @@ export async function processContract(
   console.log(`// [Queue] Processing Contract ID: ${contractId}`);
   let persistenceStarted = false;
   try {
+    if (typeof contractId !== 'string' || !contractId.trim()) throw new Error('Contract job is missing its contract ID.');
+    if (!Buffer.isBuffer(buffer) || buffer.length === 0) throw new Error('Contract file is empty or unreadable.');
     if (!leaseCurrent()) return;
     if (!deps.store) throw new Error('Contract storage is not configured.');
     // 1. Text Extraction
@@ -142,11 +171,21 @@ export async function processContract(
             throw new Error('Invalid clause risk assessment.');
           }
 
-          // Call Gemini for redlines
-          const analysis = await deps.analyze(item.title, item.text, regContext);
-          if (!analysis || typeof analysis.explanation !== 'string' || !analysis.explanation.trim() ||
-              typeof analysis.suggestedRedline !== 'string') {
-            throw new Error('Invalid clause explanation response.');
+          // Call Gemini for redlines, falling back to a labelled rule-based
+          // summary only when the provider itself is unavailable. A bad
+          // provider answer still fails the clause rather than being
+          // papered over with invented text.
+          let analysis: ClauseAnalysisResult;
+          try {
+            const result = await deps.analyze(item.title, item.text, regContext);
+            if (!result || typeof result.explanation !== 'string' || !result.explanation.trim() ||
+                typeof result.suggestedRedline !== 'string') {
+              throw new Error('Invalid clause explanation response.');
+            }
+            analysis = result;
+          } catch (err) {
+            if (isGeminiUnavailable(err)) analysis = ruleBasedAnalysis(classification, item, regContext);
+            else throw err;
           }
 
           if (!leaseCurrent()) throw new Error('Job lease unavailable.');

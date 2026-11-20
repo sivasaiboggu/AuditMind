@@ -79,3 +79,44 @@ test('offline rule classification always identifies its method and calibration l
     }
   }finally{axios.post=original;}
 });
+
+test('empty clause text throws instead of being fabricated as low risk',async()=>{
+  const original=axios.post;
+  try{
+    axios.post=async()=>{throw new Error('synthetic offline');};
+    assert.throws(()=>fallbackClassify('   '),/must not be empty/);
+    assert.throws(()=>fallbackClassify(''),/must not be empty/);
+    await assert.rejects(classifyClauseRisk('  '),/must not be empty/);
+    await assert.rejects(getRiskScore(''),/must not be empty/);
+  }finally{axios.post=original;}
+});
+
+test('offline fallback reports the matched review pattern',()=>{
+  assert.match(fallbackClassify('the party shall indemnify the other').signal,/indemnif/);
+  assert.equal(fallbackClassify('ordinary delivery clause').signal,undefined);
+});
+
+test('oversized clauses are truncated to the same bound the service accepts',async()=>{
+  const original=axios.post;
+  try{
+    let received;
+    axios.post=async(_url,body)=>{received=body.text;return {data:{label:'low',confidence:0.62,method:'heuristic_review_rules'}};};
+    await classifyClauseRisk('x'.repeat(25000));
+    assert.equal(received.length,20000);
+    // A pattern past the bound must not fire in the offline fallback either.
+    axios.post=async()=>{throw new Error('synthetic offline');};
+    const beyond='word '.repeat(5000)+'confidentiality';
+    assert.equal(await getRiskScore(beyond),33); // low 18 + length modifier 15, no signal
+  }finally{axios.post=original;}
+});
+
+test('offline risk score adds a capped modifier per extra distinct signal',async()=>{
+  const original=axios.post;
+  try{
+    axios.post=async()=>{throw new Error('synthetic offline');};
+    assert.equal(await getRiskScore('indemnify'),64);
+    assert.equal(await getRiskScore('indemnify governing law'),67);
+    assert.equal(await getRiskScore('indemnify sole discretion governing law'),70);
+    assert.equal(await getRiskScore('indemnify sole discretion governing law intellectual property'),73); // +9 cap reached
+  }finally{axios.post=original;}
+});

@@ -24,6 +24,16 @@
     { "text": "force\nmajeure event", "label": "medium", "confidence": 0.72 },
     { "text": "exclusive\tjurisdiction of the courts", "label": "medium", "confidence": 0.72 },
     { "text": "the parties may renew the term by mutual consent", "label": "low", "confidence": 0.62 },
-    { "text": "LIQUIDATED DAMAGES APPLY", "label": "critical", "confidence": 0.88 }
+    { "text": "LIQUIDATED DAMAGES APPLY", "label": "critical", "confidence": 0.88 },
+    { "text": "this agreement shall auto-renew each year", "label": "medium", "confidence": 0.72 },
+    { "text": "the licence shall auto renew each year", "label": "medium", "confidence": 0.72 },
+    { "text": "unlimited liability for all losses", "label": "high", "confidence": 0.79 },
+    { "text": "the employee agrees to a non-compete for two years", "label": "high", "confidence": 0.79 },
+    { "text": "the parties agree to a non compete clause", "label": "high", "confidence": 0.79 },
+    { "text": "the company may terminate this agreement without notice", "label": "medium", "confidence": 0.72 },
+    { "text": "indemnification obligations of the parties", "label": "high", "confidence": 0.79 },
+    { "text": "confidential information must not be disclosed", "label": "medium", "confidence": 0.72 },
+    { "text": "force-majeure event", "label": "medium", "confidence": 0.72 },
+    { "text": "perpetual license filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler irrevocable terms", "label": "low", "confidence": 0.62 }
   ]
 }

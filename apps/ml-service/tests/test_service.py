@@ -74,3 +74,21 @@ class ServiceTests(unittest.TestCase):
         self.assertTrue(0<=data['score']<=100)
         self.assertFalse(data['calibrated'])
         self.assertEqual(data['method'],'heuristic_review_rules')
+
+    def test_risk_score_signal_modifier_matches_api_fallback(self):
+        # One signal: base only. Three distinct high signals: +6.
+        single=self.client.post('/risk-score',json={'text':'indemnify'}).json()
+        self.assertEqual((single['score'],single['signals']),(64,1))
+        triple=self.client.post('/risk-score',json={'text':'indemnify sole discretion governing law'}).json()
+        self.assertEqual((triple['score'],triple['signals']),(70,3))
+        plain=self.client.post('/risk-score',json={'text':'ordinary clause'}).json()
+        self.assertEqual((plain['score'],plain['signals']),(18,0))
+
+    def test_health_reports_heuristic_mode_without_a_model(self):
+        data=self.client.get('/health')
+        self.assertEqual(data.status_code,200)
+        body=data.json()
+        self.assertEqual(body['status'],'healthy')
+        self.assertFalse(body['model_loaded'])
+        self.assertEqual(body['method'],'heuristic_review_rules')
+        self.assertFalse(body['calibrated'])

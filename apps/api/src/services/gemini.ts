@@ -3,9 +3,36 @@ import { readGeminiSse } from './gemini-stream.js';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
+/** Prompt bounds: a long clause plus retrieved context must not blow up the
+ * model call or silently truncate inside the provider. */
+const MAX_CLAUSE_PROMPT_CHARS = 12000;
+const MAX_CONTEXT_PROMPT_CHARS = 6000;
+
 export interface ClauseAnalysisResult {
   explanation: string;
   suggestedRedline: string;
+}
+
+/**
+ * Errors from the explanation provider carry a machine-readable code so the
+ * pipeline can tell "Gemini is down" (rule-based fallback) from "Gemini
+ * answered with garbage" (fail the run, never fabricate). The message text
+ * is unchanged for existing callers.
+ */
+export function geminiError(message: string, code: 'GEMINI_UNAVAILABLE' | 'GEMINI_INVALID_RESPONSE'): Error {
+  return Object.assign(new Error(message), { code });
+}
+
+function isUnavailable(error: any): boolean {
+  const status = error?.response?.status;
+  if (status === 401 || status === 403 || status === 429 || status === 503) return true;
+  const message = String(error?.message ?? '');
+  return error?.code === 'ECONNABORTED' || error?.code === 'ENOTFOUND' || error?.code === 'ECONNREFUSED' ||
+    /timeout|network|econn|429|503/i.test(message);
+}
+
+function truncateForPrompt(text: string, maxChars: number): string {
+  return text.length > maxChars ? text.slice(0, maxChars) + '\n[... truncated for review ...]' : text;
 }
 
 /**
@@ -18,7 +45,7 @@ export async function analyzeClauseWithGemini(
   regulationContext: string
 ): Promise<ClauseAnalysisResult> {
   if (!GEMINI_API_KEY) {
-    throw new Error('Clause explanation service is not configured.');
+    throw geminiError('Clause explanation service is not configured.', 'GEMINI_UNAVAILABLE');
   }
 
   try {
@@ -29,10 +56,10 @@ Analyze the following clause and retrieve details on its compliance/risk level.
 
 Clause Title: ${title}
 Original Clause Text:
-"${clauseText}"
+"${truncateForPrompt(clauseText, MAX_CLAUSE_PROMPT_CHARS)}"
 
 Retrieved Regulatory Grounding / Precedent Context:
-"${regulationContext}"
+"${truncateForPrompt(regulationContext, MAX_CONTEXT_PROMPT_CHARS)}"
 
 Output your response as a valid JSON object matching the following structure:
 {
@@ -52,15 +79,54 @@ Do not include markdown tags like \`\`\`json. Return only raw JSON.
       }
     }, { timeout: 5000 });
 
-    const textResponse = response.data.candidates[0].content.parts[0].text;
-    const parsed = JSON.parse(textResponse);
-    if (typeof parsed.explanation !== 'string' || !parsed.explanation.trim() ||
-        typeof parsed.suggestedRedline !== 'string') throw new Error('Invalid clause explanation response.');
-    return { explanation: parsed.explanation, suggestedRedline: parsed.suggestedRedline };
-  } catch (err) {
+    const textResponse = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (typeof textResponse !== 'string' || !textResponse.trim()) {
+      throw geminiError('Clause explanation service did not return a valid assessment.', 'GEMINI_INVALID_RESPONSE');
+    }
+    let parsed: unknown;
+    try { parsed = JSON.parse(textResponse); }
+    catch { throw geminiError('Clause explanation service did not return a valid assessment.', 'GEMINI_INVALID_RESPONSE'); }
+    if (typeof parsed !== 'object' || parsed === null ||
+        typeof (parsed as any).explanation !== 'string' || !(parsed as any).explanation.trim() ||
+        typeof (parsed as any).suggestedRedline !== 'string') {
+      throw geminiError('Clause explanation service did not return a valid assessment.', 'GEMINI_INVALID_RESPONSE');
+    }
+    return { explanation: (parsed as any).explanation, suggestedRedline: (parsed as any).suggestedRedline };
+  } catch (err: any) {
     console.error('Clause explanation provider failed.');
-    throw new Error('Clause explanation service did not return a valid assessment.');
+    if (err?.code === 'GEMINI_UNAVAILABLE' || err?.code === 'GEMINI_INVALID_RESPONSE') throw err;
+    throw geminiError(
+      'Clause explanation service did not return a valid assessment.',
+      isUnavailable(err) ? 'GEMINI_UNAVAILABLE' : 'GEMINI_INVALID_RESPONSE');
   }
+}
+
+export type ChatMessage = { role: 'user' | 'model'; content: string };
+
+/**
+ * Gemini rejects consecutive same-role contents. Merge them (and drop
+ * empty ones) so a history like user, user, model still forms a valid
+ * alternating request. Pure and unit-tested without any provider call.
+ */
+export function buildChatContents(
+  messages: ChatMessage[],
+  systemPrompt: string
+): { role: 'user' | 'model'; parts: { text: string }[] }[] {
+  const merged: ChatMessage[] = [];
+  for (const message of messages) {
+    if (!message || typeof message.content !== 'string' || !message.content.trim()) continue;
+    const last = merged[merged.length - 1];
+    if (last && last.role === message.role) last.content += '\n' + message.content;
+    else merged.push({ role: message.role, content: message.content });
+  }
+  return [
+    { role: 'user', parts: [{ text: systemPrompt }] },
+    ...merged.map(msg => ({ role: msg.role, parts: [{ text: msg.content }] })),
+  ];
+}
+
+function escapeRegExp(word: string): string {
+  return word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
@@ -68,7 +134,7 @@ Do not include markdown tags like \`\`\`json. Return only raw JSON.
  * Uses gemini-2.5-flash for speed.
  */
 export async function streamChatWithGemini(
-  messages: { role: 'user' | 'model'; content: string }[],
+  messages: ChatMessage[],
   contractContext: string,
   onToken: (token: string) => void
 ): Promise<void> {
@@ -87,21 +153,12 @@ export async function streamChatWithGemini(
   try {
     // Base System Prompt
     const systemPrompt = `You are AuditMind, a contract risk AI. Answer questions using ONLY the contract clauses provided here:\n\n${contractContext}\n\nKeep your response concise, professional, and highlight specific clause numbers when referencing rules.`;
-    
+
     // Construct contents
-    const contents = [
-      {
-        role: 'user',
-        parts: [{ text: systemPrompt }]
-      },
-      ...messages.map(msg => ({
-        role: msg.role,
-        parts: [{ text: msg.content }]
-      }))
-    ];
+    const contents = buildChatContents(messages, systemPrompt);
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`;
-    
+
     const response = await axios({
       method: 'post',
       url,
@@ -120,41 +177,43 @@ export async function streamChatWithGemini(
     if (answerStarted) {
       throw new Error('The streamed answer was interrupted and is incomplete. Please retry.');
     }
-    
+
     // Determine the latest user query from the messages array
-    const userQuery = messages[messages.length - 1]?.content || '';
+    const userQuery = [...messages].reverse().find(m => m?.role === 'user')?.content || '';
     const lowercaseQuery = userQuery.toLowerCase();
-    
+
     // Find matching sections in the contract context using keyword intersection
-    const matchingLines: string[] = [];
     const lines = contractContext.split(/\n+/).map(l => l.trim()).filter(l => l.length > 15);
-    
+
     const keywords = lowercaseQuery
       .replace(/[?:!.,;'"()\[\]]/g, ' ')
       .split(/\s+/)
       .filter(w => w.length >= 3 && !['what', 'when', 'where', 'with', 'from', 'this', 'that', 'then', 'have', 'does', 'clause', 'section', 'the', 'and', 'for'].includes(w));
 
+    // Rank lines by how many distinct query keywords they contain (whole
+    // words only, so "law" no longer matches "flaw"), best first.
+    const ranked: { line: string; hits: number }[] = [];
     if (keywords.length > 0) {
       for (const line of lines) {
-        const isMatch = keywords.some(word => line.toLowerCase().includes(word));
-        if (isMatch) {
-          matchingLines.push(line);
-          if (matchingLines.length >= 4) break;
-        }
+        const lower = line.toLowerCase();
+        const hits = keywords.filter(word => new RegExp(`\\b${escapeRegExp(word)}\\b`).test(lower)).length;
+        if (hits > 0) ranked.push({ line, hits });
       }
+      ranked.sort((a, b) => b.hits - a.hits);
     }
-    
+    const matchingLines = ranked.slice(0, 4).map(r => r.line);
+
     // Check if the error is a quota/auth error (403) vs a real crash
     const isQuotaError = error?.response?.status === 403 || error?.response?.status === 429 || String(error?.message).includes('403') || String(error?.message).includes('429');
-    
+
     let response = '';
-    
+
     if (isQuotaError) {
       response = `⚠️ AI Chat is currently in Local Search Mode (Gemini API quota reached).`;
     } else {
       response = `⚠️ AI Chat is currently in Local Search Mode (connection error).`;
     }
-    
+
     if (matchingLines.length > 0) {
       response += `\n\nBased on a local scan of this contract, here are the most relevant provisions for your query:\n\n${matchingLines.map((line, i) => `${i + 1}. ${line}`).join('\n\n')}`;
       response += `\n\nFor deeper AI-powered analysis, please update your GEMINI_API_KEY in apps/api/.env with an active key from https://aistudio.google.com/`;
@@ -241,23 +300,25 @@ Do not include markdown tags like \`\`\`json. Return only raw JSON.
       }
     }, { timeout: 3000 });
 
-    const textResponse = response.data.candidates[0].content.parts[0].text;
-    const parsed = JSON.parse(textResponse);
+    const textResponse = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (typeof textResponse !== 'string' || !textResponse.trim()) throw new Error('Invalid contract validation response.');
+    const parsed: unknown = JSON.parse(textResponse);
 
     // Safety fallback: if Gemini says it's not a contract, verify with our robust heuristic
     const heuristicResult = validateContractHeuristic(text);
-    if (!parsed.isContract && heuristicResult.isContract) {
+    if (typeof parsed === 'object' && parsed !== null && (parsed as any).isContract !== true && heuristicResult.isContract) {
       console.log('// Gemini flagged document as non-contract, but heuristic recovery override allowed it.');
       return { isContract: true, message: '' };
     }
 
     return {
-      isContract: parsed.isContract === true,
-      message: parsed.message || 'Please upload a valid legal contract.'
+      isContract: typeof parsed === 'object' && parsed !== null && (parsed as any).isContract === true,
+      message: typeof parsed === 'object' && parsed !== null && typeof (parsed as any).message === 'string' && (parsed as any).message
+        ? (parsed as any).message
+        : 'Please upload a valid legal contract.'
     };
   } catch (err) {
     console.error('Contract validation provider failed.');
     return validateContractHeuristic(text);
   }
 }
-

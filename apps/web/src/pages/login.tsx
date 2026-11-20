@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth-context';
-import { Shield, Mail, Terminal, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { useTheme } from '../lib/theme';
+import { Shield, Mail, Terminal, ArrowRight, CheckCircle2, Moon, Sun } from 'lucide-react';
 
 export default function Login() {
   const { user, loading: authLoading, loginWithGoogle, sendOTP, verifyOTP, loginBypass } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   
   const [email, setEmail] = useState('');
@@ -61,10 +63,14 @@ export default function Login() {
     window.addEventListener('resize', resizeHandler);
 
     const animate = () => {
-      ctx.fillStyle = '#080A0F';
+      // Read the theme tokens each frame so the canvas follows a theme toggle.
+      const rootStyles = getComputedStyle(document.documentElement);
+      const canvasBg = rootStyles.getPropertyValue('--canvas-bg').trim() || '#080A0F';
+      const gridStroke = rootStyles.getPropertyValue('--canvas-grid').trim() || 'rgba(255,255,255,0.015)';
+      ctx.fillStyle = canvasBg;
       ctx.fillRect(0, 0, width, height);
 
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.015)';
+      ctx.strokeStyle = gridStroke;
       ctx.lineWidth = 1;
       const gridSize = 60;
       for (let x = 0; x < width; x += gridSize) {
@@ -170,9 +176,19 @@ export default function Login() {
     <div className="relative min-h-screen flex items-center justify-center p-4 overflow-hidden">
       <canvas ref={canvasRef} className="absolute inset-0 z-0 pointer-events-none" />
 
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.02),rgba(0,255,0,0.01),rgba(0,0,255,0.02))] bg-[length:100%_4px,6px_100%] pointer-events-none z-1"></div>
+      <div className="scanlines absolute inset-0 pointer-events-none z-1"></div>
 
-      <div className="relative z-10 w-full max-w-md glass-panel p-8 rounded border border-white/5 shadow-2xl">
+      <button
+        onClick={toggleTheme}
+        aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+        aria-pressed={theme === 'dark'}
+        title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+        className="absolute top-4 right-4 z-20 p-2 rounded text-text-muted hover:text-text-primary hover:bg-overlay/5 border border-transparent hover:border-overlay/10 precise-transition"
+      >
+        {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+      </button>
+
+      <div className="relative z-10 w-full max-w-md glass-panel p-8 rounded border border-overlay/5 shadow-2xl">
         <div className="flex flex-col items-center mb-8">
           <div className="w-12 h-12 rounded bg-background-base border border-accent-cyan/40 text-accent-cyan flex items-center justify-center mb-3 shadow-[0_0_20px_rgba(0,229,255,0.25)]">
             <Shield className="w-6 h-6 animate-pulse" />
@@ -208,7 +224,7 @@ export default function Login() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="analyst@firm.com"
-                  className="w-full bg-background-base/80 border border-white/10 focus:border-accent-cyan/50 focus:ring-1 focus:ring-accent-cyan/20 outline-none rounded py-2 pl-10 pr-4 text-sm font-mono text-text-primary precise-transition"
+                  className="w-full bg-background-base/80 border border-overlay/10 focus:border-accent-cyan/50 focus:ring-1 focus:ring-accent-cyan/20 outline-none rounded py-2 pl-10 pr-4 text-sm font-mono text-text-primary precise-transition"
                 />
               </div>
             </div>
@@ -240,7 +256,7 @@ export default function Login() {
                 value={otpCode}
                 onChange={(e) => setOtpCode(e.target.value)}
                 placeholder="123456"
-                className="w-full tracking-widest text-center bg-background-base/80 border border-white/10 focus:border-accent-cyan/50 focus:ring-1 focus:ring-accent-cyan/20 outline-none rounded py-2.5 px-4 text-lg font-mono text-text-primary precise-transition"
+                className="w-full tracking-widest text-center bg-background-base/80 border border-overlay/10 focus:border-accent-cyan/50 focus:ring-1 focus:ring-accent-cyan/20 outline-none rounded py-2.5 px-4 text-lg font-mono text-text-primary precise-transition"
               />
             </div>
 
@@ -248,7 +264,7 @@ export default function Login() {
               <button
                 type="button"
                 onClick={() => setOtpStep('request')}
-                className="w-1/3 bg-white/5 hover:bg-white/10 border border-white/10 text-text-secondary font-mono text-xs py-2.5 rounded precise-transition cursor-pointer"
+                className="w-1/3 bg-overlay/5 hover:bg-overlay/10 border border-overlay/10 text-text-secondary font-mono text-xs py-2.5 rounded precise-transition cursor-pointer"
               >
                 Back
               </button>
@@ -265,16 +281,16 @@ export default function Login() {
         )}
 
         <div className="relative flex py-4 items-center">
-          <div className="flex-grow border-t border-white/5"></div>
+          <div className="flex-grow border-t border-overlay/5"></div>
           <span className="flex-shrink mx-4 text-text-muted text-[10px] uppercase font-mono tracking-widest">
             or
           </span>
-          <div className="flex-grow border-t border-white/5"></div>
+          <div className="flex-grow border-t border-overlay/5"></div>
         </div>
 
         <button
           onClick={handleGoogleLogin}
-          className="w-full mb-3 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-text-secondary hover:text-text-primary font-mono text-xs py-2.5 rounded flex items-center justify-center gap-2 precise-transition cursor-pointer"
+          className="w-full mb-3 bg-overlay/5 hover:bg-overlay/10 border border-overlay/10 hover:border-overlay/20 text-text-secondary hover:text-text-primary font-mono text-xs py-2.5 rounded flex items-center justify-center gap-2 precise-transition cursor-pointer"
         >
           <svg className="w-4 h-4 mr-1" viewBox="0 0 24 24">
             <path
@@ -299,7 +315,7 @@ export default function Login() {
 
         <button
           onClick={handleBypass}
-          className="w-full bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-text-secondary hover:text-text-primary font-mono text-xs py-2 rounded precise-transition cursor-pointer"
+          className="w-full bg-overlay/5 hover:bg-overlay/10 border border-overlay/10 hover:border-overlay/20 text-text-secondary hover:text-text-primary font-mono text-xs py-2 rounded precise-transition cursor-pointer"
         >
           Bypass (Developer Mode)
         </button>

@@ -21,9 +21,11 @@ function isolatedStore({storageFails = false, metadataFailsOnce = false, process
     from(table) {
       const filters = {}; let deleting = false;
       let inserting=false;
+      let rangeArgs=null;
       const query = {
         insert() {inserting=true;return this;},
         select() { return this; }, eq(k,v) { filters[k]=v; return this; },
+        range(start,end) { rangeArgs=[start,end]; return this; },
         delete() { deleting=true; return this; }, order() { return this; },
         async maybeSingle() { if(ownershipReadFails) return {data:null,error:new Error('private-query-error')}; return { data: rows.find(r=>Object.entries(filters).every(([k,v])=>r[k]===v)) || null, error:null }; },
         single() { return this.maybeSingle(); },
@@ -37,6 +39,7 @@ function isolatedStore({storageFails = false, metadataFailsOnce = false, process
           }
           if(table==='clauses' && clauseReadFails) return Promise.resolve({data:null,error:new Error('private-context-error')}).then(resolve,reject);
           if(table==='clauses') data=[{id:'clause',contract_id:filters.contract_id,text:'Synthetic contract text'}];
+          if(rangeArgs) data=data.slice(rangeArgs[0],rangeArgs[1]+1);
           return Promise.resolve({data,error:null}).then(resolve,reject);
         }
       }; return query;
@@ -141,6 +144,70 @@ test('health reports configured state without pretending it probed connectivity'
   const {app}=await fixture();
   try {assert.match((await app.inject({url:'/health'})).json().database,/not checked/);}
   finally {await app.close();}
+});
+
+test('contract list is paginated and rejects invalid pagination',async()=>{
+  const {app}=await fixture();
+  try {
+    const page=await app.inject({url:'/contracts?limit=1',headers:headers('user-a')});
+    assert.equal(page.statusCode,200);assert.equal(page.json().length,1);
+    const empty=await app.inject({url:'/contracts?limit=1&offset=1',headers:headers('user-a')});
+    assert.equal(empty.statusCode,200);assert.deepEqual(empty.json(),[]);
+    for(const query of ['limit=abc','limit=0','limit=101','offset=-1','offset=abc']) {
+      const bad=await app.inject({url:`/contracts?${query}`,headers:headers('user-a')});
+      assert.equal(bad.statusCode,400,query);
+      assert.match(bad.json().error,/pagination/);
+    }
+  } finally {await app.close();}
+});
+
+test('unknown routes return the same error shape, not the framework default',async()=>{
+  const {app}=await fixture();
+  try {
+    const response=await app.inject({url:'/no-such-route'});
+    assert.equal(response.statusCode,404);
+    assert.deepEqual(response.json(),{error:'Route not found.'});
+  } finally {await app.close();}
+});
+
+test('invalid FRONTEND_URL values never become credentialed CORS origins',async()=>{
+  const {resolveCorsOrigins}=await import('../dist/app.js');
+  const previous=process.env.FRONTEND_URL;
+  try {
+    for(const value of ['*','not-a-url','ftp://example.com','https://']) {
+      process.env.FRONTEND_URL=value;
+      const origins=resolveCorsOrigins();
+      assert.ok(!origins.includes('*'),value);
+      assert.ok(!origins.some(o=>o.includes(value.replace(/\/+$/,''))),value);
+      assert.ok(origins.length>0);
+    }
+    process.env.FRONTEND_URL='https://app.example.com/';
+    assert.ok(resolveCorsOrigins().includes('https://app.example.com'));
+  } finally {
+    if(previous===undefined) delete process.env.FRONTEND_URL; else process.env.FRONTEND_URL=previous;
+  }
+});
+
+test('unknown WebSocket message type gets an error frame instead of silence',async()=>{
+  const {app}=await fixture();let ws;
+  try {
+    await app.listen({port:0,host:'127.0.0.1'});
+    ws=new WebSocket(`ws://127.0.0.1:${app.server.address().port}/ws`);
+    await once(ws,'open');
+    const errorFrame=new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>reject(new Error('no error frame received')),5000);
+      ws.on('message',raw=>{
+        const frame=JSON.parse(raw.toString());
+        if(frame.type==='error'){clearTimeout(timer);resolve(frame);}
+      });
+    });
+    ws.send(JSON.stringify({type:'subscribe',accessToken:'user-a',contractId:'contract-a'}));
+    await new Promise(r=>setTimeout(r,50));
+    ws.send(JSON.stringify({type:'bogus',accessToken:'user-a',contractId:'contract-a'}));
+    const frame=await errorFrame;
+    assert.match(frame.message,/Unsupported message type/);
+    assert.equal(ws.readyState,1); // socket stays open for real requests
+  } finally {ws?.terminate();await app.close();}
 });
 
 

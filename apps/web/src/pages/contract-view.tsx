@@ -6,6 +6,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useContractStore } from '../store/contractStore';
 import { useAuth } from '../lib/auth-context';
 import { Navbar } from '../components/Navbar';
+import { Badge, Card, EmptyState, Skeleton } from '../components/ui';
+import type { BadgeTone } from '../components/ui';
+import { cn } from '../lib/utils';
 import { AlertTriangle, ArrowLeft, Send, FileEdit, MessageSquareCode, FileText, Copy, CheckCheck, Wifi, WifiOff, Bot } from 'lucide-react';
 import type { Clause, ChatMessage } from '@auditmind/shared-types';
 
@@ -222,12 +225,12 @@ export default function ContractView() {
     }
   };
 
-  const getRiskBgClass = (level: string) => {
+  const getRiskTone = (level: string): BadgeTone => {
     switch (level) {
-      case 'critical': return 'bg-risk-critical/10 text-risk-critical border-risk-critical/20';
-      case 'high': return 'bg-risk-high/10 text-risk-high border-risk-high/20';
-      case 'medium': return 'bg-risk-medium/10 text-risk-medium border-risk-medium/20';
-      default: return 'bg-risk-low/10 text-risk-low border-risk-low/20';
+      case 'critical': return 'critical';
+      case 'high': return 'high';
+      case 'medium': return 'medium';
+      default: return 'low';
     }
   };
 
@@ -236,11 +239,12 @@ export default function ContractView() {
       <Navbar currentView="analyzer" setView={(v) => navigate(v === 'dashboard' ? '/dashboard' : `/contract/${id}`)} onLogout={handleLogout} />
       
       {/* Sub Header */}
-      <div className="bg-background-panel border-b border-white/5 px-4 sm:px-6 py-3 flex flex-wrap gap-3 items-center justify-between shrink-0">
+      <div className="bg-background-panel border-b border-overlay/5 px-4 sm:px-6 py-3 flex flex-wrap gap-3 items-center justify-between shrink-0">
         <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={() => navigate('/dashboard')}
-            className="p-1.5 rounded hover:bg-white/5 border border-transparent hover:border-white/10 text-text-secondary hover:text-text-primary precise-transition"
+            aria-label="Back to dashboard"
+            className="p-1.5 rounded hover:bg-overlay/5 border border-transparent hover:border-overlay/10 text-text-secondary hover:text-text-primary precise-transition"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
@@ -251,24 +255,24 @@ export default function ContractView() {
           </div>
         </div>
 
-        <div className="flex gap-2">
-          <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded border border-risk-critical/30 text-risk-critical bg-risk-critical/5">
-            CRITICAL: {activeClauses.filter(c => c.riskLevel === 'critical').length}
-          </span>
-          <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded border border-risk-high/30 text-risk-high bg-risk-high/5">
-            HIGH: {activeClauses.filter(c => c.riskLevel === 'high').length}
-          </span>
-          <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded border border-risk-medium/30 text-risk-medium bg-risk-medium/5">
-            MED: {activeClauses.filter(c => c.riskLevel === 'medium').length}
-          </span>
+        <div className="flex flex-wrap gap-2">
+          <Badge tone="critical">
+            Critical: {activeClauses.filter(c => c.riskLevel === 'critical').length}
+          </Badge>
+          <Badge tone="high">
+            High: {activeClauses.filter(c => c.riskLevel === 'high').length}
+          </Badge>
+          <Badge tone="medium">
+            Med: {activeClauses.filter(c => c.riskLevel === 'medium').length}
+          </Badge>
         </div>
       </div>
 
       {/* Side by Side */}
       <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden">
         {/* Left Side */}
-        <div className="w-full md:w-1/2 min-w-0 h-[32%] md:h-auto shrink-0 border-b md:border-r border-white/5 flex flex-col bg-background-base overflow-hidden">
-          <div className="border-b border-white/5 p-4 flex items-center gap-2 bg-white/1">
+        <div className="w-full md:w-1/2 min-w-0 h-[32%] md:h-auto shrink-0 border-b md:border-r border-overlay/5 flex flex-col bg-background-base overflow-hidden">
+          <div className="border-b border-overlay/5 p-4 flex items-center gap-2 bg-overlay/1">
             <FileText className="w-4 h-4 text-accent-cyan" />
             <span className="text-xs font-mono font-bold text-text-secondary uppercase">
               Contract Clauses
@@ -276,33 +280,53 @@ export default function ContractView() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {activeClauses.length === 0 ? (
-              <div className="p-12 text-center text-text-muted font-mono text-xs animate-pulse">
-                {clausesLoading ? 'Loading contract clauses...' : loadError || (activeContract?.status === 'processing' ? 'Analysis is still processing. Return to the dashboard for status updates.' : activeContract?.status === 'failed' ? 'Analysis failed. No completed clause review is available.' : 'No clause results are available for this contract.')}
+            {clausesLoading ? (
+              <div className="space-y-3" aria-busy="true" aria-label="Loading contract clauses">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="space-y-2 rounded border border-overlay/5 p-4">
+                    <Skeleton className="h-4 w-2/3" />
+                    <Skeleton className="h-3 w-full" />
+                    <Skeleton className="h-3 w-5/6" />
+                  </div>
+                ))}
+              </div>
+            ) : activeClauses.length === 0 ? (
+              <div className="p-12 text-center text-text-muted font-mono text-xs">
+                {loadError || (activeContract?.status === 'processing' ? 'Analysis is still processing. Return to the dashboard for status updates.' : activeContract?.status === 'failed' ? 'Analysis failed. No completed clause review is available.' : 'No clause results are available for this contract.')}
               </div>
             ) : (
               activeClauses.map((clause) => (
-                <div
+                <Card
                   key={clause.id}
                   onClick={() => setSelectedClause(clause)}
-                  className={`p-4 rounded border glass-panel precise-transition cursor-pointer ${getRiskBorder(clause.riskLevel)} ${
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelectedClause(clause);
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={selectedClause?.id === clause.id}
+                  aria-label={`Select clause ${clause.number ? `${clause.number}: ` : ''}${clause.title}`}
+                  className={cn(
+                    'p-4 precise-transition cursor-pointer',
+                    getRiskBorder(clause.riskLevel),
                     selectedClause?.id === clause.id
                       ? 'border-accent-cyan bg-accent-cyan/5 shadow-[0_0_15px_rgba(0,229,255,0.03)]'
-                      : 'border-white/5 hover:border-white/10 hover:bg-white/2'
-                  }`}
+                      : 'border-overlay/5 hover:border-overlay/10 hover:bg-overlay/2',
+                  )}
                 >
                   <div className="flex justify-between items-start gap-3 mb-2">
                     <span className="font-mono text-xs font-bold text-text-primary">
                       {clause.number ? `[${clause.number}]` : ''} {clause.title}
                     </span>
-                    <span className={`text-[9px] font-mono px-2 py-0.5 rounded uppercase font-bold tracking-wider ${getRiskBgClass(clause.riskLevel)}`}>
-                      {clause.riskLevel}
-                    </span>
+                    <Badge tone={getRiskTone(clause.riskLevel)}>{clause.riskLevel}</Badge>
                   </div>
                   <p className="text-xs text-text-secondary font-sans line-clamp-3 leading-relaxed">
                     {clause.text}
                   </p>
-                </div>
+                </Card>
               ))
             )}
           </div>
@@ -314,13 +338,14 @@ export default function ContractView() {
             <div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
 
               {/* Tab Bar */}
-              <div className="border-b border-white/5 flex flex-wrap items-center bg-background-panel/80 px-2 sm:px-4 gap-1 pt-2 flex-shrink-0">
+              <div className="border-b border-overlay/5 flex flex-wrap items-center bg-background-panel/80 px-2 sm:px-4 gap-1 pt-2 flex-shrink-0">
                 <button
                   onClick={() => setActiveTab('analysis')}
+                  aria-pressed={activeTab === 'analysis'}
                   className={`px-4 py-2 text-xs font-mono font-bold uppercase tracking-wider rounded-t border-b-2 precise-transition flex items-center gap-1.5 ${
                     activeTab === 'analysis'
                       ? 'text-text-primary border-accent-cyan bg-accent-cyan/5'
-                      : 'text-text-muted border-transparent hover:text-text-secondary hover:border-white/20'
+                      : 'text-text-muted border-transparent hover:text-text-secondary hover:border-overlay/20'
                   }`}
                 >
                   <FileText className="w-3 h-3" />
@@ -328,10 +353,11 @@ export default function ContractView() {
                 </button>
                 <button
                   onClick={() => setActiveTab('chat')}
+                  aria-pressed={activeTab === 'chat'}
                   className={`px-4 py-2 text-xs font-mono font-bold uppercase tracking-wider rounded-t border-b-2 precise-transition flex items-center gap-1.5 ${
                     activeTab === 'chat'
                       ? 'text-text-primary border-accent-cyan bg-accent-cyan/5'
-                      : 'text-text-muted border-transparent hover:text-text-secondary hover:border-white/20'
+                      : 'text-text-muted border-transparent hover:text-text-secondary hover:border-overlay/20'
                   }`}
                 >
                   <MessageSquareCode className="w-3 h-3" />
@@ -359,7 +385,7 @@ export default function ContractView() {
               {/* Analysis Tab */}
               {activeTab === 'analysis' && (
                 <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-5 break-words">
-                  <div className="flex flex-wrap gap-3 justify-between items-start border-b border-white/5 pb-4">
+                  <div className="flex flex-wrap gap-3 justify-between items-start border-b border-overlay/5 pb-4">
                     <div>
                       <span className="font-mono text-xs text-accent-cyan uppercase tracking-widest block mb-1">
                         Clause Analysis
@@ -368,16 +394,16 @@ export default function ContractView() {
                         {selectedClause.number ? `${selectedClause.number}: ` : ''}{selectedClause.title}
                       </h3>
                     </div>
-                    <div className={`px-3 py-1.5 rounded font-mono text-xs uppercase font-bold border ${getRiskBgClass(selectedClause.riskLevel)}`}>
+                    <Badge tone={getRiskTone(selectedClause.riskLevel)} className="px-3 py-1.5 text-xs">
                       {selectedClause.riskLevel} Risk
-                    </div>
+                    </Badge>
                   </div>
 
                   <div className="space-y-2">
                     <span className="text-[10px] font-mono text-text-secondary uppercase tracking-widest block">
                       Original Clause
                     </span>
-                    <div className="p-4 bg-background-base border border-white/5 rounded-lg font-sans text-sm text-text-secondary leading-relaxed select-text">
+                    <div className="p-4 bg-background-base border border-overlay/5 rounded-lg font-sans text-sm text-text-secondary leading-relaxed select-text">
                       {selectedClause.text}
                     </div>
                   </div>
@@ -426,7 +452,7 @@ export default function ContractView() {
               {activeTab === 'chat' && (
                 <div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
                   {/* Chat context pill */}
-                  <div className="px-4 py-2 flex-shrink-0 border-b border-white/5 bg-background-base/20">
+                  <div className="px-4 py-2 flex-shrink-0 border-b border-overlay/5 bg-background-base/20">
                     <div className="flex items-center gap-2 text-[10px] font-mono text-text-muted">
                       <span className="text-accent-cyan">▸</span>
                       Context:
@@ -451,7 +477,7 @@ export default function ContractView() {
                       <div className="w-6 h-6 rounded-full bg-accent-cyan/10 border border-accent-cyan/20 flex items-center justify-center flex-shrink-0 mt-0.5">
                         <Bot className="w-3.5 h-3.5 text-accent-cyan" />
                       </div>
-                      <div className="bg-white/3 border border-white/8 px-3.5 py-2.5 rounded-2xl rounded-tl-sm text-sm font-sans text-text-secondary leading-relaxed flex-1 max-w-[90%]">
+                      <div className="bg-overlay/3 border border-overlay/8 px-3.5 py-2.5 rounded-2xl rounded-tl-sm text-sm font-sans text-text-secondary leading-relaxed flex-1 max-w-[90%]">
                         <span className="block text-[10px] font-mono text-accent-cyan mb-1 uppercase tracking-wider">AuditMind</span>
                         Ask me anything about this contract — clause obligations, risk implications, breach scenarios, or deadline triggers.
                       </div>
@@ -475,12 +501,12 @@ export default function ContractView() {
                             isUser
                               ? 'bg-accent-cyan/10 border-accent-cyan/20 rounded-br-sm text-text-primary'
                               : isLocalSearch
-                              ? 'bg-amber-500/5 border-amber-500/20 rounded-bl-sm text-amber-200'
-                              : 'bg-white/3 border-white/8 rounded-bl-sm text-text-secondary'
+                              ? 'bg-amber-500/5 border-amber-500/20 rounded-bl-sm text-amber-700 dark:text-amber-200'
+                              : 'bg-overlay/3 border-overlay/8 rounded-bl-sm text-text-secondary'
                           }`}>
                             {!isUser && (
                               <span className={`block text-[9px] font-mono mb-1.5 uppercase tracking-wider ${
-                                isLocalSearch ? 'text-amber-400 font-bold' : 'text-text-muted'
+                                isLocalSearch ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-text-muted'
                               }`}>
                                 {isLocalSearch ? 'Incomplete response' : 'AuditMind'}
                               </span>
@@ -489,7 +515,8 @@ export default function ContractView() {
                             {/* Hover copy button */}
                             <button
                               onClick={() => handleCopy(msg.id, msg.message)}
-                              className="absolute -top-2 right-2 opacity-0 group-hover:opacity-100 bg-background-panel border border-white/10 p-1 rounded-md text-text-muted hover:text-text-primary precise-transition shadow-lg"
+                              aria-label="Copy message"
+                              className="absolute -top-2 right-2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 bg-background-panel border border-overlay/10 p-1 rounded-md text-text-muted hover:text-text-primary precise-transition shadow-lg"
                               title="Copy"
                             >
                               {copiedId === msg.id
@@ -507,7 +534,7 @@ export default function ContractView() {
                         <div className="w-6 h-6 rounded-full bg-accent-cyan/10 border border-accent-cyan/20 flex items-center justify-center flex-shrink-0">
                           <Bot className="w-3.5 h-3.5 text-accent-cyan" />
                         </div>
-                        <div className="bg-white/3 border border-white/8 px-4 py-3 rounded-2xl rounded-bl-sm flex items-center gap-1.5">
+                        <div className="bg-overlay/3 border border-overlay/8 px-4 py-3 rounded-2xl rounded-bl-sm flex items-center gap-1.5">
                           <span className="w-2 h-2 rounded-full bg-accent-cyan/60 animate-bounce" style={{animationDelay:'0ms'}} />
                           <span className="w-2 h-2 rounded-full bg-accent-cyan/60 animate-bounce" style={{animationDelay:'160ms'}} />
                           <span className="w-2 h-2 rounded-full bg-accent-cyan/60 animate-bounce" style={{animationDelay:'320ms'}} />
@@ -518,19 +545,21 @@ export default function ContractView() {
                   </div>
 
                   {/* Input bar */}
-                  <div className="flex-shrink-0 border-t border-white/5 bg-background-panel/60 p-4">
+                  <div className="flex-shrink-0 border-t border-overlay/5 bg-background-panel/60 p-4">
                     <form onSubmit={handleSendChat} className="flex gap-2.5 items-center">
                       <input
                         type="text"
                         value={chatInput}
                         onChange={(e) => setChatInput(e.target.value)}
                         placeholder={isChatGenerating ? 'AuditMind is thinking...' : "Ask a question about this contract..."}
+                        aria-label="Ask a question about this contract"
                         disabled={isChatGenerating}
-                        className="min-w-0 flex-1 bg-background-base border border-white/10 outline-none rounded-xl py-3 px-4 text-sm font-sans text-text-primary placeholder:text-text-muted/50 focus:border-accent-cyan/50 focus:ring-1 focus:ring-accent-cyan/20 precise-transition disabled:opacity-50"
+                        className="min-w-0 flex-1 bg-background-base border border-overlay/10 outline-none rounded-xl py-3 px-4 text-sm font-sans text-text-primary placeholder:text-text-muted/50 focus:border-accent-cyan/50 focus:ring-1 focus:ring-accent-cyan/20 precise-transition disabled:opacity-50"
                       />
                       <button
                         type="submit"
                         disabled={isChatGenerating || !wsConnected}
+                        aria-label="Send message"
                         className="w-10 h-10 bg-accent-cyan/15 hover:bg-accent-cyan/25 border border-accent-cyan/30 hover:border-accent-cyan text-accent-cyan rounded-xl precise-transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center flex-shrink-0"
                         title="Send"
                       >
@@ -546,15 +575,12 @@ export default function ContractView() {
 
             </div>
           ) : (
-            <div className="flex-grow flex flex-col items-center justify-center text-text-muted p-8 text-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-white/3 border border-white/8 flex items-center justify-center">
-                <FileText className="w-7 h-7 text-text-muted/50" />
-              </div>
-              <div>
-                <p className="font-mono text-sm uppercase tracking-widest mb-2 text-text-secondary">No Clause Selected</p>
-                <p className="text-xs text-text-muted/60 max-w-xs leading-relaxed">Click any clause on the left panel to view its risk analysis, suggested revisions, and ask AI questions.</p>
-              </div>
-            </div>
+            <EmptyState
+              icon={<FileText className="w-6 h-6 text-text-muted/50" />}
+              title="No Clause Selected"
+              description="Click any clause on the left panel to view its risk analysis, suggested revisions, and ask AI questions."
+              className="flex-grow"
+            />
           )}
         </div>
       </div>

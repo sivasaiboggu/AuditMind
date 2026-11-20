@@ -35,9 +35,9 @@ export default function NotFound() {
 
         {/* Decorative divider */}
         <div className="flex items-center gap-4">
-          <div className="flex-1 h-px bg-white/5" />
+          <div className="flex-1 h-px bg-overlay/5" />
           <span className="font-mono text-[10px] text-text-muted uppercase tracking-widest">AuditMind</span>
-          <div className="flex-1 h-px bg-white/5" />
+          <div className="flex-1 h-px bg-overlay/5" />
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
@@ -49,7 +49,7 @@ export default function NotFound() {
           </Link>
           <button
             onClick={() => window.history.back()}
-            className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-white/3 hover:bg-white/5 border border-white/10 hover:border-white/20 text-text-secondary font-mono text-xs uppercase tracking-wider rounded-lg transition-all duration-200"
+            className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-overlay/3 hover:bg-overlay/5 border border-overlay/10 hover:border-overlay/20 text-text-secondary font-mono text-xs uppercase tracking-wider rounded-lg transition-all duration-200"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             Go Back

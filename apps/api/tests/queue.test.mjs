@@ -110,6 +110,27 @@ test('transient download failures request fenced bounded retry instead of termin
  const calls=[];const store={rpc:async(name,args)=>{calls.push([name,args]);return name==='claim_contract_job'?{data:[{contract_id:'synthetic',lease_token:'lease'}],error:null}:{data:true,error:null};},storage:{from:()=>({download:async()=>({data:null,error:new Error('synthetic')})})}};
  await runDurableJob(store);assert.equal(calls[1][0],'retry_contract_job');assert.equal(calls[1][1].p_lease_token,'lease');
 });
+
+test('Gemini unavailable completes with a labelled rule-based summary, not a failed contract',async()=>{
+ const {effects,deps}=fixture();
+ deps.analyze=async()=>{const err=new Error('Clause explanation service is not configured.');err.code='GEMINI_UNAVAILABLE';throw err;};
+ deps.classify=async()=>({label:'high',signal:'indemnif\\w*'});
+ await processContract('synthetic','synthetic.txt','text/plain',Buffer.from('test'),deps);
+ assert.equal(effects.inserted.length,1);
+ assert.match(effects.inserted[0].risk_explanation,/Rule-based review summary/);
+ assert.match(effects.inserted[0].risk_explanation,/no AI assessment was performed/);
+ assert.match(effects.inserted[0].risk_explanation,/indemnif/);
+ assert.match(effects.inserted[0].suggested_redline,/No automated redline was generated/);
+ assert.deepEqual(effects.statuses,[{status:'completed',overall_risk_score:42}]);
+ assert.equal(effects.progress.at(-1)[1],'completed');
+});
+
+test('empty contract buffer fails before any extraction or persistence',async()=>{
+ const {effects,deps}=fixture();
+ await processContract('synthetic','synthetic.txt','text/plain',Buffer.alloc(0),deps);
+ assert.deepEqual(effects.inserted,[]);
+ assert.equal(effects.progress.at(-1)[1],'failed');
+});
 test('lost lease prevents output persistence and terminal failure writes',async()=>{
  const {deps,effects}=fixture();let current=true;deps.classify=async()=>{current=false;return {label:'high'};};
  await processContract('synthetic','synthetic.txt','text/plain',Buffer.from('test'),deps,'lease',()=>current);

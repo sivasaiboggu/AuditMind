@@ -23,8 +23,21 @@
     <meta name="twitter:description" content="Enterprise-grade AI that reads, analyzes, and flags risky clauses in your legal contracts in seconds." />
 
     <!-- Theme -->
-    <meta name="theme-color" content="#080A0F" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#111111" />
+    <meta name="color-scheme" content="light dark" />
+
+    <!-- Apply the saved (or OS-preferred) theme before first paint to avoid a flash -->
+    <script>
+      try {
+        var storedTheme = localStorage.getItem('auditmind-theme');
+        var isDark = storedTheme
+          ? storedTheme === 'dark'
+          : !window.matchMedia || !window.matchMedia('(prefers-color-scheme: light)').matches;
+        document.documentElement.classList.toggle('dark', isDark);
+      } catch (e) {
+        document.documentElement.classList.add('dark');
+      }
+    </script>
 
     <!-- Preconnect for performance -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />

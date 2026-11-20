@@ -2,9 +2,50 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ------------------------------------------------------------------ */
+/* Theme tokens                                                        */
+/*                                                                     */
+/* `:root` is the clean light theme. `.dark` (toggled on <html> by    */
+/* the theme provider, see src/lib/theme.tsx) restores the original    */
+/* dark "neuro-terminal" aesthetic. All component colours resolve     */
+/* through these variables so no page needs hard-coded theme values.  */
+/* ------------------------------------------------------------------ */
+
+:root {
+  color-scheme: light;
+  --bg-base: 250 250 250;
+  --bg-panel: 255 255 255;
+  --bg-hover: 244 244 245;
+  --text-primary: 24 24 27;
+  --text-secondary: 63 63 70;
+  --text-muted: 113 113 122;
+  /* Translucent tint: dark slate on light backgrounds. */
+  --overlay: 15 23 42;
+  --glass-bg: 255 255 255;
+  --glass-shadow: 0 4px 24px rgb(15 23 42 / 0.08);
+  --canvas-bg: #fafafa;
+  --canvas-grid: rgb(15 23 42 / 0.04);
+}
+
+.dark {
+  color-scheme: dark;
+  --bg-base: 17 17 17;
+  --bg-panel: 23 23 23;
+  --bg-hover: 31 31 31;
+  --text-primary: 161 161 170;
+  --text-secondary: 113 113 122;
+  --text-muted: 82 82 91;
+  /* Translucent tint: white on dark backgrounds. */
+  --overlay: 255 255 255;
+  --glass-bg: 15 18 29;
+  --glass-shadow: 0 4px 30px rgb(0 0 0 / 0.5);
+  --canvas-bg: #111111;
+  --canvas-grid: rgb(255 255 255 / 0.01);
+}
+
 @layer utilities {
   .display-lg {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     font-size: 48px;
     font-weight: 400;
     line-height: 48px;
@@ -13,16 +54,51 @@
   }
 
   .body-md {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     line-height: normal;
     letter-spacing: normal;
     text-transform: none;
+  }
+
+  /* Subtle horizontal scanlines, theme-aware (used by landing / login). */
+  .scanlines {
+    background-image: linear-gradient(rgb(var(--overlay) / 0) 50%, rgb(var(--overlay) / 0.05) 50%);
+    background-size: 100% 4px;
+  }
+
+  /* Shimmering placeholder surface for Skeleton. */
+  .skeleton-shimmer {
+    background: linear-gradient(
+      90deg,
+      rgb(var(--overlay) / 0.06) 25%,
+      rgb(var(--overlay) / 0.12) 50%,
+      rgb(var(--overlay) / 0.06) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s linear infinite;
   }
 }
 
 @layer base {
   body {
-    @apply bg-background-base text-text-primary font-sans antialiased overflow-x-hidden selection:bg-accent-cyan/30 selection:text-white body-md;
+    @apply bg-background-base text-text-primary font-sans antialiased overflow-x-hidden selection:bg-accent-cyan/30 selection:text-text-primary body-md;
+  }
+
+  /* Visible keyboard focus everywhere; inputs keep their own focus ring
+     as well, this outline sits 2px outside it. */
+  :where(a, button, input, select, textarea, [role="button"], [tabindex]):focus-visible {
+    outline: 2px solid #4b4ba0;
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
 
@@ -33,21 +109,21 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(8, 10, 15, 0.5);
+  background: rgb(var(--bg-base) / 0.5);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(94, 108, 133, 0.2);
+  background: rgb(var(--overlay) / 0.15);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(75, 75, 160, 0.5);
+  background: rgb(75 75 160 / 0.5);
 }
 
 /* Technical bio-grid pattern background */
 .neuro-bg-grid {
-  background-image: radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 0);
+  background-image: radial-gradient(rgb(var(--overlay) / 0.035) 1px, transparent 0);
   background-size: 24px 24px;
 }
 
@@ -64,23 +140,23 @@
 
 /* Glassmorphism Panel styles */
 .glass-panel {
-  background: rgba(15, 18, 29, 0.7);
+  background: rgb(var(--glass-bg) / 0.7);
   backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgb(var(--overlay) / 0.04);
+  box-shadow: var(--glass-shadow);
 }
 
 .glass-panel-hover:hover {
   border-color: rgba(75, 75, 160, 0.35);
-  background: rgba(20, 25, 41, 0.8);
+  background: rgb(var(--glass-bg) / 0.8);
   box-shadow: 0 8px 32px rgba(75, 75, 160, 0.08);
 }
 
 /* Premium Glowing Border Card (Neuform reference) */
 .glowing-card {
   position: relative;
-  background: rgba(15, 18, 29, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgb(var(--glass-bg) / 0.85);
+  border: 1px solid rgb(var(--overlay) / 0.05);
   transition: all 400ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -107,8 +183,8 @@
 
 /* Glass Interactive Buttons */
 .glass-button {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgb(var(--overlay) / 0.03);
+  border: 1px solid rgb(var(--overlay) / 0.06);
   backdrop-filter: blur(4px);
   transition: all 250ms cubic-bezier(0.16, 1, 0.3, 1);
 }

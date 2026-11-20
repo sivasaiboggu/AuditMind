@@ -31,7 +31,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
         </div>
 
         {/* Progress bar */}
-        <div className="w-48 h-0.5 bg-white/5 rounded-full overflow-hidden">
+        <div className="w-48 h-0.5 bg-overlay/5 rounded-full overflow-hidden">
           <div
             className="h-full bg-accent-cyan/60 rounded-full"
             style={{

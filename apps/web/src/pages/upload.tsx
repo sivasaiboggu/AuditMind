@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { useContractStore } from '../store/contractStore';
 import { useAuth } from '../lib/auth-context';
 import { Navbar } from '../components/Navbar';
+import { Button } from '../components/ui';
 import { Upload, ArrowLeft, Terminal } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -207,14 +208,15 @@ export default function UploadPage() {
         <div className="mb-6 flex items-center gap-2">
           <button
             onClick={() => navigate('/dashboard')}
-            className="p-1.5 rounded hover:bg-white/5 border border-transparent hover:border-white/10 text-text-secondary hover:text-text-primary precise-transition"
+            aria-label="Back to dashboard"
+            className="p-1.5 rounded hover:bg-overlay/5 border border-transparent hover:border-overlay/10 text-text-secondary hover:text-text-primary precise-transition"
           >
             <ArrowLeft className="w-4.5 h-4.5" />
           </button>
           <span className="text-xs font-sans text-text-secondary font-medium">Back to dashboard</span>
         </div>
 
-        <div className="glass-panel p-8 rounded border border-white/5 space-y-6">
+        <div className="glass-panel p-8 rounded border border-overlay/5 space-y-6">
           <div>
             <h2 className="text-xl font-sans font-medium text-text-primary tracking-tight">
               Upload contract
@@ -233,6 +235,7 @@ export default function UploadPage() {
               </div>
               <button
                 onClick={() => setError(null)}
+                aria-label="Dismiss error"
                 className="text-[10px] text-text-muted hover:text-text-primary uppercase tracking-widest font-bold precise-transition"
               >
                 Dismiss
@@ -242,7 +245,7 @@ export default function UploadPage() {
 
           {acceptanceUnknown.current && <div className="border border-risk-medium/30 p-4 rounded text-sm text-text-secondary space-y-3">
             <p>Another upload is paused because the previous file may already be stored or queued.</p>
-            <button onClick={() => navigate('/dashboard')} className="px-4 py-2 min-h-11 rounded border border-accent-cyan/30 text-accent-cyan">Check dashboard</button>
+            <Button size="sm" onClick={() => navigate('/dashboard')}>Check dashboard</Button>
           </div>}
           <div
             onDragOver={handleDragOver}
@@ -251,7 +254,7 @@ export default function UploadPage() {
             className={`min-h-[260px] rounded border border-dashed flex flex-col items-center justify-center p-6 text-center precise-transition ${
               isDragOver
                 ? 'border-accent-cyan bg-accent-cyan/5'
-                : 'border-white/10 hover:border-white/20 bg-background-base/30'
+                : 'border-overlay/10 hover:border-overlay/20 bg-background-base/30'
             }`}
           >
             {isAnalyzing && progress ? (
@@ -260,7 +263,7 @@ export default function UploadPage() {
                   <span className="text-accent-cyan uppercase tracking-wider">{progress.message}</span>
                   <span className="text-text-secondary">{progress.percent}%</span>
                 </div>
-                <div className="w-full bg-white/5 rounded-full h-1.5 overflow-hidden border border-white/5">
+                <div className="w-full bg-overlay/5 rounded-full h-1.5 overflow-hidden border border-overlay/5">
                   <div
                     className="bg-accent-cyan h-1.5 precise-transition"
                     style={{ width: `${progress.percent}%` }}
@@ -276,10 +279,11 @@ export default function UploadPage() {
                   type="file"
                   accept=".pdf,.docx,.txt"
                   disabled={acceptanceUnknown.current}
+                  aria-label="Choose a contract file"
                   onChange={handleFileChange}
                   className="hidden"
                 />
-                <div className="w-12 h-12 rounded bg-white/5 border border-white/10 text-text-secondary group-hover:text-accent-cyan group-hover:border-accent-cyan/40 flex items-center justify-center precise-transition shadow-lg">
+                <div className="w-12 h-12 rounded bg-overlay/5 border border-overlay/10 text-text-secondary group-hover:text-accent-cyan group-hover:border-accent-cyan/40 flex items-center justify-center precise-transition shadow-lg">
                   <Upload className="w-5 h-5 group-hover:scale-110 precise-transition" />
                 </div>
                 <div>
