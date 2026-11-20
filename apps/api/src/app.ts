@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { initializeQueue, enqueueContractJob, setProgressListener } from './services/queue.js';
 import { streamChatWithGemini } from './services/gemini.js';
 import { installContractAuth, ownedContract, verifiedUserId } from './security.js';
+import { sortClausesByNumber } from './services/clauseOrder.js';
 import { Contract, Clause } from '@auditmind/shared-types';
 
 export interface AppDependencies {
@@ -311,14 +312,19 @@ app.get('/contracts/:id/clauses', async (req, reply) => {
     return reply.status(400).send({ error: 'Invalid pagination parameters. Use limit 1-100 and offset 0 or more.' });
   }
 
+  // Clause numbers are text, so the database orders them lexicographically
+  // ("Section 10" before "Section 2") and a paginated slice on that order
+  // can strand a clause on the wrong page. The parser caps a contract at
+  // 500 segments, so fetch the bounded set, order it naturally in memory,
+  // and only then take the requested page.
   const { data, error } = await supabase
     .from('clauses')
     .select('*')
-    .eq('contract_id', id).order('number', { ascending: true })
-    .range(pagination.offset, pagination.offset + pagination.limit - 1);
+    .eq('contract_id', id);
 
   if (error) return reply.status(500).send({ error: 'The database request could not be completed.' });
-  return data.map(c => ({
+  const ordered = sortClausesByNumber(data ?? []);
+  return ordered.slice(pagination.offset, pagination.offset + pagination.limit).map(c => ({
     id: c.id,
     contractId: c.contract_id,
     number: c.number,
@@ -430,7 +436,7 @@ app.route({
           const { data, error: contextError } = await supabase.from('clauses').select('number, title, text').eq('contract_id', contractId);
           if (contextError || !data?.length) throw new Error('Contract context is unavailable.');
           if (data) {
-            clausesText = data.map(c => `${c.number} (${c.title}): ${c.text}`).join('\n\n');
+            clausesText = sortClausesByNumber(data).map(c => `${c.number} (${c.title}): ${c.text}`).join('\n\n');
           }
 
           // 2. Query Gemini streaming response

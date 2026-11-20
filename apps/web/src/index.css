@@ -32,7 +32,10 @@
   --bg-base: 17 17 17;
   --bg-panel: 23 23 23;
   --bg-hover: 31 31 31;
-  --text-primary: 161 161 170;
+  /* Primary body text was zinc-400 on near-black, too dim to read
+   * comfortably; zinc-200 keeps the hierarchy (secondary/muted stay
+   * dimmer) while restoring normal body contrast. */
+  --text-primary: 228 228 231;
   --text-secondary: 113 113 122;
   --text-muted: 82 82 91;
   /* Translucent tint: white on dark backgrounds. */

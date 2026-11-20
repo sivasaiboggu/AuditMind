@@ -211,7 +211,7 @@ export default function UploadPage() {
             aria-label="Back to dashboard"
             className="p-1.5 rounded hover:bg-overlay/5 border border-transparent hover:border-overlay/10 text-text-secondary hover:text-text-primary precise-transition"
           >
-            <ArrowLeft className="w-4.5 h-4.5" />
+            <ArrowLeft className="w-5 h-5" />
           </button>
           <span className="text-xs font-sans text-text-secondary font-medium">Back to dashboard</span>
         </div>
