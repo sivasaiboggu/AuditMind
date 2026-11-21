@@ -21,7 +21,7 @@ AuditMind is built as a TypeScript monorepo containing three core components:
 
 1.  **Vite Client App (`/apps/web`):** A React application styled with high-performance Tailwind CSS and Recharts telemetry graphs.
 2.  **Fastify API Server (`/apps/api`):** A Fastify backend using WebSockets (`/ws`) for real-time progress feeds and streaming chat completions.
-3.  **Python ML Service (`/apps/ml-service`):** A FastAPI service running token classification models for clause analysis.
+3.  **Python ML Service (`/apps/ml-service`):** A FastAPI service applying validated heuristic review rules to clauses, with an opt-in local classifier (a reviewed model declaring exactly `low`, `medium`, `high`, `critical` labels) when `ENABLE_RISK_MODEL=true` and `MODEL_NAME` are set. No model is downloaded by default.
 
 ---
 
@@ -163,8 +163,9 @@ a valid zero confidence instead of inventing 0.85.
 
 Run offline model-boundary regressions with:
 `python3 -m unittest discover -s apps/ml-service/tests -v`
-(the six HTTP service tests require FastAPI, uvicorn and httpx; they skip
-explicitly without those packages, while five pure rule tests still run)
+(the 11 HTTP service tests require FastAPI, uvicorn and httpx; they skip
+explicitly without those packages, while the 13 pure rule tests still run;
+24 tests in total, also runnable as `pytest` from `apps/ml-service`)
 and `npm run test:security`. No external model calls, cloud accounts or migrations.
 
 

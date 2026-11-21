@@ -2,6 +2,18 @@
 All notable changes will be documented here.
 
 ## Unreleased
+- Patch release (1.0.2, 21 Nov 2026): dependency patch/minor updates
+  only plus honest landing copy and a small canvas fix. Full suites
+  re-verified: API 169 passed, ML 24 passed (+61 subtests), web 7
+  passed, scripts 3 passed, 0 failed.
+- Landing copy now matches the service: risk scoring is validated
+  review rules by default (optional local classifier), RAG cites only
+  a configured corpus, and the "View Demo Report" button — which led
+  to /login with no demo behind it — is now "See how it works",
+  scrolling to the features section.
+- Landing canvas reads theme tokens only on theme change instead of
+  every animation frame, and draws a single static frame when
+  prefers-reduced-motion is set.
 - Patch release (1.0.1, 21 Nov 2026): no feature changes. This repo has
   no Dockerfiles, so there was nothing to build-test. Full suites
   re-verified: API 169 passed, ML 24 passed (+61 subtests), web 7

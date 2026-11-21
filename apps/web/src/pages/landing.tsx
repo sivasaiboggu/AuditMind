@@ -10,6 +10,17 @@ export default function Landing() {
   const { theme, toggleTheme } = useTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  // Theme tokens for the canvas, re-read only when the theme changes —
+  // reading getComputedStyle every animation frame was wasted work.
+  const themeTokensRef = useRef({ bg: '#111111', grid: 'rgba(255,255,255,0.01)' });
+  useEffect(() => {
+    const rootStyles = getComputedStyle(document.documentElement);
+    themeTokensRef.current = {
+      bg: rootStyles.getPropertyValue('--canvas-bg').trim() || '#111111',
+      grid: rootStyles.getPropertyValue('--canvas-grid').trim() || 'rgba(255,255,255,0.01)',
+    };
+  }, [theme]);
+
   // Auto-redirect if session is active
   useEffect(() => {
     if (!loading && user) {
@@ -45,12 +56,12 @@ export default function Landing() {
     window.addEventListener('resize', handleResize);
 
     let animationFrameId: number;
+    // Respect reduced-motion: draw one static frame instead of animating.
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     function animate() {
-      // Read the theme tokens each frame so the canvas follows a theme toggle.
-      const rootStyles = getComputedStyle(document.documentElement);
-      const canvasBg = rootStyles.getPropertyValue('--canvas-bg').trim() || '#111111';
-      const gridStroke = rootStyles.getPropertyValue('--canvas-grid').trim() || 'rgba(255,255,255,0.01)';
+      // Theme tokens are cached in a ref and refreshed on theme change.
+      const { bg: canvasBg, grid: gridStroke } = themeTokensRef.current;
       ctx.fillStyle = canvasBg;
       ctx.fillRect(0, 0, width, height);
 
@@ -104,7 +115,9 @@ export default function Landing() {
         ctx.fill();
       });
 
-      animationFrameId = requestAnimationFrame(animate);
+      if (!reduceMotion) {
+        animationFrameId = requestAnimationFrame(animate);
+      }
     }
 
     animate();
@@ -164,44 +177,45 @@ export default function Landing() {
             Next-Gen Legal AI Platform
           </div>
           
-          <h1 className="display-lg text-[36px] leading-[36px] md:text-[48px] md:leading-[48px] font-normal tracking-[-0.025em] mb-6 text-text-primary uppercase-none">
+          <h1 className="display-lg text-[36px] leading-[36px] md:text-[48px] md:leading-[48px] font-normal tracking-[-0.025em] mb-6 text-text-primary">
             Contract risk analysis
             <br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent-cyan via-accent-tertiary to-indigo-400">
-              backed by deep learning.
+              backed by validated review rules.
             </span>
           </h1>
           
           <p className="text-lg md:text-xl text-text-secondary mb-8 max-w-2xl leading-relaxed body-md">
-            Upload any legal agreement. Our neural compliance engine extracts every clause, 
-            classifies risk with a fine-tuned transformer model, and grounds analysis in 
-            real case law—no prompt wrappers, no guessing.
+            Upload any legal agreement. AuditMind extracts every clause, scores
+            risk with validated review rules, and explains each finding in plain
+            English — with an optional local classifier and retrieval-grounded
+            references where configured. Outputs need human review.
           </p>
 
           <div className="flex flex-wrap gap-4">
             <Link to="/login" className="px-6 py-3 rounded bg-accent-cyan hover:bg-accent-cyan/90 text-background-base font-mono font-bold text-sm precise-transition flex items-center gap-2 shadow-[0_0_25px_rgba(0,229,255,0.35)]">
               Start Analysis <ArrowRight className="w-4 h-4" />
             </Link>
-            <Link to="/login" className="px-6 py-3 rounded text-text-primary font-mono text-sm border border-overlay/10 precise-transition flex items-center glass-button">
-              View Demo Report
-            </Link>
+            <a href="#features" className="px-6 py-3 rounded text-text-primary font-mono text-sm border border-overlay/10 precise-transition flex items-center glass-button">
+              See how it works
+            </a>
           </div>
         </div>
       </section>
 
       {/* Features */}
-      <section className="max-w-7xl mx-auto px-6 py-16 z-10">
+      <section id="features" className="max-w-7xl mx-auto px-6 py-16 z-10">
         <div className="stagger-rise grid md:grid-cols-3 gap-6">
           {[
             {
               icon: Cpu,
-              title: 'Deep Learning Classification',
-              description: 'Local BERT-class transformer inference runs classification scoring on CPU/GPU environments.',
+              title: 'Validated Risk Scoring',
+              description: 'Deterministic review rules score every clause locally on CPU; a reviewed local classifier with explicit low / medium / high / critical labels can be enabled instead.',
             },
             {
               icon: Shield,
               title: 'Regulation-Grounded RAG',
-              description: 'Hybrid vector similarity matches search indexes (pgvector) to fetch matching GDPR, UCC, and CCPA standards.',
+              description: 'Hybrid vector search retrieves matching GDPR, UCC, and CCPA material from a configured corpus — and says so plainly when none is configured, instead of inventing citations.',
             },
             {
               icon: FileText,
