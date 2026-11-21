@@ -50,4 +50,20 @@ Standardized UI components (cards, menus, drawers) must use the `.glass-panel` s
 All interaction states, dropdown expansions, and panel transitions must follow a restrained, instrument-like movement profile (no bouncy consumer-app spring curves):
 - **Standard Transition Duration:** `150ms` to `250ms`
 - **Easing Curve:** `cubic-bezier(0.16, 1, 0.3, 1)` (Ultra-smooth ease-out)
-- **Hover effects:** Minor border-color shifts (`rgba(0, 229, 255, 0.2)`) and background adjustments.
+- **Hover effects:** Minor border-color shifts (`rgba(75, 75, 160, 0.35)`) and background adjustments.
+
+---
+
+## 5. Elevation, Focus & Accent (round 6)
+
+- **Brand accent in use:** `#4B4BA0` (indigo). The old `#00E5FF` cyan glow
+  is retired — every glow, canvas node and hover tint now uses the indigo.
+- **Elevation tokens** (`src/index.css`, resolved per theme):
+  `--shadow-card` for resting cards, `--shadow-lift` for hover lift
+  (`.lift-hover` raises 2px). Cards are 12px radius (`.rounded-xl`).
+- **Focus ring:** `--ring` (indigo in light, lighter indigo in dark),
+  2px outline with 2px offset on every focusable element.
+- **Primary button:** solid indigo with white text in both themes.
+- **Badges:** pills (`rounded-full`). Keyboard hints use the `.kbd` chip.
+- **Display type:** `.display-lg` is fluid (`clamp(2.25rem, 4.5vw, 3.5rem)`),
+  line-height 1.05, tracking -0.03em.

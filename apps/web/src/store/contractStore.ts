@@ -6,19 +6,23 @@ interface ContractState {
   contracts: Contract[];
   activeContract: Contract | null;
   activeClauses: Clause[];
+  // Kept (not dead): the workspace-clearing contract requires switching
+  // contracts or accounts to clear the report and session, so a stale
+  // report/session of contract A can never leak into contract B's view.
+  // Nothing in the UI sets them yet; zustand setState can, so the
+  // clearing logic below must cover them.
   activeReport: RiskReport | null;
   chatMessages: ChatMessage[];
   activeSessionId: string | null;
   isAnalyzing: boolean;
   progress: ProcessingProgress | null;
   user: any | null;
-  
+
   setContracts: (contracts: Contract[]) => void;
   setActiveContract: (contract: Contract | null) => void;
   setActiveClauses: (clauses: Clause[]) => void;
   setActiveReport: (report: RiskReport | null) => void;
   setChatMessages: (messages: ChatMessage[]) => void;
-  addChatMessage: (message: ChatMessage) => void;
   setActiveSessionId: (sessionId: string | null) => void;
   setIsAnalyzing: (isAnalyzing: boolean) => void;
   setProgress: (progress: ProcessingProgress | null) => void;
@@ -45,7 +49,6 @@ export const useContractStore = create<ContractState>((set) => ({
   setActiveClauses: (activeClauses) => set({ activeClauses }),
   setActiveReport: (activeReport) => set({ activeReport }),
   setChatMessages: (chatMessages) => set({ chatMessages }),
-  addChatMessage: (message) => set((state) => ({ chatMessages: [...state.chatMessages, message] })),
   setActiveSessionId: (activeSessionId) => set({ activeSessionId }),
   setIsAnalyzing: (isAnalyzing) => set({ isAnalyzing }),
   setProgress: (progress) => set({ progress }),

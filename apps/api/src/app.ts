@@ -4,6 +4,7 @@ import multipart from '@fastify/multipart';
 import websocket from '@fastify/websocket';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { randomUUID } from 'crypto';
+import { createRequire } from 'module';
 import { z } from 'zod';
 import { initializeQueue, enqueueContractJob, setProgressListener } from './services/queue.js';
 import { streamChatWithGemini } from './services/gemini.js';
@@ -18,6 +19,11 @@ export interface AppDependencies {
   streamChat?: typeof streamChatWithGemini;
   registerProgress?: typeof setProgressListener;
 }
+
+// Single source of truth for the API version: apps/api/package.json.
+// The health endpoint used to hard-code '1.0.0' while the package was
+// already at 1.0.2, so monitors saw a stale version.
+const { version: API_VERSION } = createRequire(import.meta.url)('../package.json') as { version: string };
 
 /** CORS origins must be explicit http(s) origins. A FRONTEND_URL of "*" or
  * a non-URL value would silently allow any site to call the API with the
@@ -112,7 +118,7 @@ app.get('/health', async () => {
   return {
     status: 'healthy',
     service: 'AuditMind API',
-    version: '1.0.0',
+    version: API_VERSION,
     timestamp: new Date().toISOString(),
     uptime: Math.round(process.uptime()),
     database: supabase ? 'configured, connectivity not checked' : 'not configured',

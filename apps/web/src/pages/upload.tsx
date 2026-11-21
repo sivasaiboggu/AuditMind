@@ -1,5 +1,6 @@
 import { workspaceGuard } from '../lib/workspace-guard';
 import { authenticatedFetch, sendAuthenticated } from '../lib/api';
+import { ACCEPTED_EXTENSIONS, FILE_SIZE_LIMIT_BYTES, FILE_SIZE_LIMIT_MB } from '../lib/constants';
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useContractStore } from '../store/contractStore';
@@ -51,8 +52,9 @@ export default function UploadPage() {
 
   const handleUploadFile = async (file: File) => {
     if (useContractStore.getState().isAnalyzing || acceptanceUnknown.current) return;
-    if (file.size === 0 || file.size > 15 * 1024 * 1024 || !/\.(pdf|docx|txt)$/i.test(file.name)) {
-      setError('Choose a nonempty PDF, DOCX or TXT file no larger than 15MB.');
+    const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+    if (file.size === 0 || file.size > FILE_SIZE_LIMIT_BYTES || !ACCEPTED_EXTENSIONS.includes(extension as '.pdf' | '.docx' | '.txt')) {
+      setError(`Choose a nonempty PDF, DOCX or TXT file no larger than ${FILE_SIZE_LIMIT_MB}MB.`);
       return;
     }
     const epoch = ++uploadEpoch.current;
@@ -64,7 +66,7 @@ export default function UploadPage() {
     setIsAnalyzing(true);
     setProgress({
       contractId: '',
-      stage: 'pending' as any,
+      stage: 'pending',
       message: 'Uploading document to secure vaults...',
       percent: 5
     });
@@ -82,7 +84,7 @@ export default function UploadPage() {
           uploadPercent += 3;
           setProgress({
             contractId: '',
-            stage: 'pending' as any,
+            stage: 'pending',
             message: 'Uploading contract to database...',
             percent: uploadPercent
           });
@@ -93,9 +95,8 @@ export default function UploadPage() {
       const formData = new FormData();
       formData.append('file', file);
 
-      const query = '';
       requestStarted = true;
-      const response = await authenticatedFetch(`${API_URL}/contracts/upload${query}`, {
+      const response = await authenticatedFetch(`${API_URL}/contracts/upload`, {
         method: 'POST',
         body: formData,
         signal: controller.signal
@@ -277,7 +278,7 @@ export default function UploadPage() {
               <label className="cursor-pointer group flex flex-col items-center gap-3">
                 <input
                   type="file"
-                  accept=".pdf,.docx,.txt"
+                  accept={ACCEPTED_EXTENSIONS.join(',')}
                   disabled={acceptanceUnknown.current}
                   aria-label="Choose a contract file"
                   onChange={handleFileChange}
@@ -291,7 +292,7 @@ export default function UploadPage() {
                     Select contract document
                   </p>
                   <p className="text-xs text-text-secondary font-sans mt-1">
-                    Drag and drop PDF, DOCX or TXT file (Max 15MB)
+                    Drag and drop PDF, DOCX or TXT file (Max {FILE_SIZE_LIMIT_MB}MB)
                   </p>
                 </div>
               </label>

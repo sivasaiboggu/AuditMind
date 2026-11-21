@@ -10,7 +10,7 @@ import { useKeyboard } from '../hooks/useKeyboard';
 import { Navbar } from '../components/Navbar';
 import { Badge, Card, EmptyState, Skeleton } from '../components/ui';
 import type { BadgeTone } from '../components/ui';
-import { cn } from '../lib/utils';
+import { cn, copyToClipboard } from '../lib/utils';
 import { AlertTriangle, ArrowLeft, Send, FileEdit, MessageSquareCode, FileText, Copy, CheckCheck, Wifi, WifiOff, Bot, Download, Search, X, GitCompare, Check } from 'lucide-react';
 import type { Clause, ChatMessage, RiskLevel } from '@auditmind/shared-types';
 
@@ -70,6 +70,19 @@ export default function ContractView() {
     [compareIds, activeClauses],
   );
 
+  /** Derived compare verdict — from the two clauses' own risk levels only. */
+  const RISK_RANK: Record<RiskLevel, number> = { low: 1, medium: 2, high: 3, critical: 4 };
+  const compareSummary = useMemo(() => {
+    if (compareClauses.length !== 2) return null;
+    const [a, b] = compareClauses;
+    const rankA = RISK_RANK[a.riskLevel];
+    const rankB = RISK_RANK[b.riskLevel];
+    const label = (c: Clause) => c.number || c.title;
+    return rankA === rankB
+      ? 'Both clauses carry the same risk level — review the explanations below to see why.'
+      : `${label(rankA > rankB ? a : b)} carries the higher risk. Start there.`;
+  }, [compareClauses]);
+
   const riskCounts = useMemo(() => {
     const counts: Record<RiskLevel, number> = { critical: 0, high: 0, medium: 0, low: 0 };
     for (const clause of activeClauses) counts[clause.riskLevel] += 1;
@@ -113,6 +126,23 @@ export default function ContractView() {
     setSelectedClause(filteredClauses[Math.max(idx - 1, 0)]);
   });
 
+  // "/" focuses the clause search, Escape clears it — both skipped while
+  // typing anywhere else, so they never steal keystrokes from an input.
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  useKeyboard('/', (e) => {
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    e.preventDefault();
+    searchInputRef.current?.focus();
+  });
+  useKeyboard('Escape', () => {
+    // Only when the search box itself (or nothing) has focus — Escape
+    // while typing in chat must not wipe the clause search.
+    if (!clauseQuery) return;
+    const el = document.activeElement;
+    if (el === searchInputRef.current || el === document.body) setClauseQuery('');
+  });
+
   /** Download a Markdown risk report built only from this contract's own data. */
   const handleExportReport = () => {
     if (!activeContract) return;
@@ -131,8 +161,11 @@ export default function ContractView() {
     exportedTimer.current = setTimeout(() => setExported(false), 2500);
   };
 
-  const handleCopy = (id: string, text: string) => {
-    navigator.clipboard.writeText(text);
+  // Only show the copied checkmark when the copy actually worked; a
+  // failed clipboard write (non-secure context, denied permission) used
+  // to show it anyway because the promise was fire-and-forget.
+  const handleCopy = async (id: string, text: string) => {
+    if (!(await copyToClipboard(text))) return;
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };
@@ -403,6 +436,7 @@ export default function ContractView() {
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
+                ref={searchInputRef}
                 type="search"
                 value={clauseQuery}
                 onChange={(e) => setClauseQuery(e.target.value)}
@@ -458,6 +492,15 @@ export default function ContractView() {
                   : 'Two clauses picked — open the Compare tab on the right.'}
               </p>
             )}
+            <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[10px] font-mono text-text-muted">
+              <span className="kbd">↑</span>
+              <span className="kbd">↓</span>
+              <span className="mr-2">move</span>
+              <span className="kbd">/</span>
+              <span className="mr-2">search</span>
+              <span className="kbd">Esc</span>
+              <span>clear search</span>
+            </p>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -505,7 +548,7 @@ export default function ContractView() {
                     'p-4 precise-transition cursor-pointer',
                     getRiskBorder(clause.riskLevel),
                     (compareMode ? inCompare : selectedClause?.id === clause.id)
-                      ? 'border-accent-cyan bg-accent-cyan/5 shadow-[0_0_15px_rgba(0,229,255,0.03)]'
+                      ? 'border-accent-cyan bg-accent-cyan/5 shadow-card'
                       : 'border-overlay/5 hover:border-overlay/10 hover:bg-overlay/2',
                   )}
                 >
@@ -651,6 +694,14 @@ export default function ContractView() {
                         <span className="text-[10px] font-mono text-text-primary uppercase tracking-widest">
                           Suggested Revision
                         </span>
+                        <button
+                          onClick={() => void handleCopy(`redline-${selectedClause.id}`, selectedClause.suggestedRedline!)}
+                          aria-label="Copy suggested revision"
+                          className="ml-auto flex items-center gap-1 px-2 py-1 rounded-md border border-overlay/10 text-text-muted hover:text-text-primary hover:border-overlay/20 text-[10px] font-mono font-bold uppercase tracking-wider precise-transition"
+                        >
+                          {copiedId === `redline-${selectedClause.id}` ? <CheckCheck className="w-3 h-3 text-risk-low" /> : <Copy className="w-3 h-3" />}
+                          {copiedId === `redline-${selectedClause.id}` ? 'Copied' : 'Copy'}
+                        </button>
                       </div>
                       <div className="p-4 bg-risk-low/5 border border-risk-low/10 rounded-lg font-sans text-sm text-text-secondary leading-relaxed">
                         <div className="text-xs font-mono text-text-muted mb-2">PROPOSED AMENDMENT:</div>
@@ -708,6 +759,14 @@ export default function ContractView() {
                       Clear
                     </button>
                   </div>
+                  {compareSummary && (
+                    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-accent-cyan/15 bg-accent-cyan/5 px-4 py-3">
+                      <Badge tone={getRiskTone(compareClauses[0].riskLevel)}>{compareClauses[0].riskLevel}</Badge>
+                      <span className="text-xs font-mono text-text-muted">vs</span>
+                      <Badge tone={getRiskTone(compareClauses[1].riskLevel)}>{compareClauses[1].riskLevel}</Badge>
+                      <p className="text-xs font-sans text-text-secondary leading-relaxed">{compareSummary}</p>
+                    </div>
+                  )}
                   <div className="grid gap-4 lg:grid-cols-2">
                     {compareClauses.map((clause) => (
                       <article key={clause.id} className={cn('rounded-lg border border-overlay/10 p-4 space-y-3', getRiskBorder(clause.riskLevel))}>

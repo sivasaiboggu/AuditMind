@@ -10,10 +10,10 @@ export default function NotFound() {
           <p
             className="font-mono text-[120px] font-black leading-none select-none"
             style={{
-              background: 'linear-gradient(135deg, rgba(0,229,255,0.8) 0%, rgba(0,229,255,0.15) 100%)',
+              background: 'linear-gradient(135deg, rgba(75,75,160,0.8) 0%, rgba(75,75,160,0.15) 100%)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
-              filter: 'drop-shadow(0 0 40px rgba(0,229,255,0.2))'
+              filter: 'drop-shadow(0 0 40px rgba(75,75,160,0.2))'
             }}
           >
             404

@@ -6,6 +6,11 @@ from pydantic import BaseModel, Field
 from risk_rules import compute_local_heuristics, count_heuristic_matches, validated_risk_prediction
 
 
+# Single source of truth for the ML service version; keep in sync with the
+# monorepo release in the root package.json.
+APP_VERSION = "1.0.3"
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # @app.on_event("startup") is deprecated; the lifespan hook is the
@@ -17,7 +22,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="AuditMind ML Legal-NLP Microservice",
     description="Contract review rules with optional explicit-label risk model inference",
-    version="1.0.0",
+    version=APP_VERSION,
     lifespan=lifespan,
 )
 
@@ -65,7 +70,7 @@ def health():
   return {
       "status": "healthy",
       "service": "AuditMind ML service",
-      "version": "1.0.0",
+      "version": APP_VERSION,
       "model": MODEL_NAME or None,
       "model_loaded": classifier_pipeline is not None,
       "method": "configured_risk_model" if classifier_pipeline is not None else "heuristic_review_rules",

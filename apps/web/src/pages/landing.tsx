@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth-context';
 import { useTheme } from '../lib/theme';
+import { APP_VERSION } from '../lib/constants';
 import { ArrowRight, Cpu, FileText, Shield, Moon, Sun } from 'lucide-react';
 
 export default function Landing() {
@@ -137,13 +138,13 @@ export default function Landing() {
       <div className="absolute bottom-[25%] right-[10%] w-[500px] h-[500px] ambient-glow-violet -z-20 pointer-events-none"></div>
 
       {/* Grid Scanline Overlay */}
-      <div className="scanlines absolute inset-0 pointer-events-none z-1"></div>
+      <div className="scanlines absolute inset-0 pointer-events-none z-[1]"></div>
 
       {/* Header */}
       <header className="border-b border-overlay/5 bg-background-base/20 backdrop-blur-md z-10">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="relative w-8 h-8 rounded bg-background-base border border-accent-cyan/25 text-accent-cyan flex items-center justify-center shadow-[0_0_15px_rgba(0,229,255,0.12)]">
+            <div className="relative w-8 h-8 rounded-lg bg-background-base border border-accent-cyan/25 text-accent-cyan flex items-center justify-center shadow-[0_0_15px_rgba(75,75,160,0.15)]">
               <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M12 22C12 22 20 18 20 12V5L12 2L4 5V12C4 18 12 22 12 22Z" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
                 <path d="M9 11H15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -177,7 +178,7 @@ export default function Landing() {
             Next-Gen Legal AI Platform
           </div>
           
-          <h1 className="display-lg text-[36px] leading-[36px] md:text-[48px] md:leading-[48px] font-normal tracking-[-0.025em] mb-6 text-text-primary">
+          <h1 className="display-lg text-balance mb-6 text-text-primary">
             Contract risk analysis
             <br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent-cyan via-accent-tertiary to-indigo-400">
@@ -193,10 +194,10 @@ export default function Landing() {
           </p>
 
           <div className="flex flex-wrap gap-4">
-            <Link to="/login" className="px-6 py-3 rounded bg-accent-cyan hover:bg-accent-cyan/90 text-background-base font-mono font-bold text-sm precise-transition flex items-center gap-2 shadow-[0_0_25px_rgba(0,229,255,0.35)]">
+            <Link to="/login" className="px-6 py-3 rounded-lg bg-accent-cyan hover:bg-accent-cyan/90 text-white font-mono font-bold text-sm precise-transition flex items-center gap-2 shadow-lift">
               Start Analysis <ArrowRight className="w-4 h-4" />
             </Link>
-            <a href="#features" className="px-6 py-3 rounded text-text-primary font-mono text-sm border border-overlay/10 precise-transition flex items-center glass-button">
+            <a href="#features" className="px-6 py-3 rounded-lg text-text-primary font-mono text-sm border border-overlay/10 precise-transition flex items-center glass-button">
               See how it works
             </a>
           </div>
@@ -204,7 +205,7 @@ export default function Landing() {
       </section>
 
       {/* Features */}
-      <section id="features" className="max-w-7xl mx-auto px-6 py-16 z-10">
+      <section id="features" className="max-w-7xl mx-auto px-6 py-16 z-10 scroll-mt-8">
         <div className="stagger-rise grid md:grid-cols-3 gap-6">
           {[
             {
@@ -223,8 +224,10 @@ export default function Landing() {
               description: 'Exposes plain-English explanations and draft amendments in a premium review panel.',
             },
           ].map((feature, i) => (
-            <div key={i} className="p-6 rounded glowing-card">
-              <feature.icon className="w-8 h-8 text-accent-cyan mb-4" />
+            <div key={i} className="p-6 rounded-xl glowing-card lift-hover">
+              <div className="w-10 h-10 rounded-lg bg-accent-cyan/10 border border-accent-cyan/20 flex items-center justify-center mb-4">
+                <feature.icon className="w-5 h-5 text-accent-cyan" />
+              </div>
               <h3 className="font-mono text-sm font-semibold text-text-primary uppercase tracking-wider mb-2">{feature.title}</h3>
               <p className="text-text-secondary text-sm leading-relaxed">
                 {feature.description}
@@ -236,7 +239,7 @@ export default function Landing() {
 
       {/* Footer */}
       <footer className="border-t border-overlay/5 py-6 text-center text-[10px] font-mono text-text-muted z-10">
-        AUDITMIND Compliance Engine // Portions protected by security tokens.
+        AUDITMIND v{APP_VERSION} — Contract risk review. AI output needs legal review.
       </footer>
     </div>
   );

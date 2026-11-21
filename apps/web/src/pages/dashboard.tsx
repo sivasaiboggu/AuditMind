@@ -42,7 +42,7 @@ function riskBucket(score: number): Exclude<RiskFilter, 'all'> {
 }
 
 const selectClassName =
-  'rounded border border-overlay/10 bg-background-panel px-3 py-2.5 text-xs font-mono text-text-secondary outline-none focus:border-accent-cyan/50 precise-transition';
+  'rounded-lg border border-overlay/10 bg-background-panel px-3 py-2.5 text-xs font-mono text-text-secondary outline-none focus:border-accent-cyan/50 precise-transition';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -116,7 +116,10 @@ export default function Dashboard() {
 
   // Compute stats based on active database entries
   const completedContracts = contracts.filter(c => c.status === 'completed');
-  const criticalRiskContracts = contracts.filter(c => c.overallRiskScore >= 70);
+  // Same buckets as the distribution chart and the risk filter: high risk
+  // is high or critical (>= 50). The card used to count >= 70, which
+  // matched neither the chart's critical bucket (>= 75) nor its label.
+  const highRiskContracts = contracts.filter(c => ['high', 'critical'].includes(riskBucket(c.overallRiskScore)));
   const avgRiskScore = completedContracts.length > 0
     ? Math.round(completedContracts.reduce((acc, c) => acc + c.overallRiskScore, 0) / completedContracts.length)
     : 0;
@@ -278,7 +281,7 @@ export default function Dashboard() {
       <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-8 w-full">
         {/* Real-time Notifications */}
         {notification && (
-          <div className="bg-accent-cyan/10 border border-accent-cyan/20 p-3.5 rounded text-xs font-mono text-accent-cyan flex items-center justify-between shadow-[0_0_15px_rgba(0,229,255,0.05)] animate-pulse">
+          <div className="bg-accent-cyan/10 border border-accent-cyan/20 p-3.5 rounded-lg text-xs font-mono text-accent-cyan flex items-center justify-between shadow-card">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-accent-cyan animate-ping"></span>
               <span>{notification}</span>
@@ -337,7 +340,7 @@ export default function Dashboard() {
               <div className="lg:col-span-2">
                 <Link
                   to="/upload"
-                  className="h-full min-h-[200px] rounded border border-dashed border-overlay/10 hover:border-accent-cyan bg-background-panel/30 hover:bg-accent-cyan/5 flex flex-col items-center justify-center p-6 text-center precise-transition group cursor-pointer"
+                  className="h-full min-h-[200px] rounded-xl border border-dashed border-overlay/10 hover:border-accent-cyan bg-background-panel/30 hover:bg-accent-cyan/5 shadow-card flex flex-col items-center justify-center p-6 text-center precise-transition group cursor-pointer"
                 >
                   <div className="w-12 h-12 rounded bg-overlay/5 border border-overlay/10 text-text-secondary group-hover:text-accent-cyan group-hover:border-accent-cyan/40 flex items-center justify-center precise-transition shadow-lg mb-3">
                     <Upload className="w-5 h-5 group-hover:scale-110 precise-transition" />
@@ -352,7 +355,7 @@ export default function Dashboard() {
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <Card className="p-5 flex flex-col justify-between">
+                <Card className="p-5 flex flex-col justify-between lift-hover">
                   <div className="flex items-center justify-between text-text-muted">
                     <FileCheck className="w-4 h-4 text-accent-cyan" />
                     <span className="text-[10px] font-sans uppercase tracking-wider">Total</span>
@@ -365,20 +368,20 @@ export default function Dashboard() {
                   </div>
                 </Card>
 
-                <Card className="p-5 flex flex-col justify-between">
+                <Card className="p-5 flex flex-col justify-between lift-hover">
                   <div className="flex items-center justify-between text-text-muted">
                     <AlertTriangle className="w-4 h-4 text-risk-high" />
                     <span className="text-[10px] font-sans uppercase tracking-wider">High Risk</span>
                   </div>
                   <div className="mt-4">
                     <div className="text-3xl font-sans font-bold text-risk-critical">
-                      {criticalRiskContracts.length}
+                      {highRiskContracts.length}
                     </div>
                     <p className="text-[10px] font-sans text-text-secondary mt-1 uppercase">High Risk</p>
                   </div>
                 </Card>
 
-                <Card className="p-5 flex flex-col justify-between">
+                <Card className="p-5 flex flex-col justify-between lift-hover">
                   <div className="flex items-center justify-between text-text-muted">
                     <Clock className="w-4 h-4 text-risk-medium" />
                     <span className="text-[10px] font-sans uppercase tracking-wider">Processing</span>
@@ -391,7 +394,7 @@ export default function Dashboard() {
                   </div>
                 </Card>
 
-                <Card className="p-5 flex flex-col justify-between">
+                <Card className="p-5 flex flex-col justify-between lift-hover">
                   <div className="flex items-center justify-between text-text-muted">
                     <CheckCircle2 className="w-4 h-4 text-risk-low" />
                     <span className="text-[10px] font-sans uppercase tracking-wider">Average Risk</span>

@@ -12,11 +12,15 @@ test('consecutive same-role messages merge so the request stays alternating', ()
     { role: 'model', content: 'Clause 2 says Y.' },
     { role: 'user', content: 'Thanks.' },
   ], 'System prompt.');
-  assert.deepEqual(contents.map(c => c.role), ['user', 'user', 'model', 'user']);
-  assert.equal(contents[0].parts[0].text, 'System prompt.');
-  assert.equal(contents[1].parts[0].text, 'What is clause 1?\nAnd clause 2?');
-  assert.equal(contents[2].parts[0].text, 'Clause 1 says X.\nClause 2 says Y.');
-  assert.equal(contents[3].parts[0].text, 'Thanks.');
+  // The system prompt is a user turn, so it folds into the opening user
+  // message: two user turns in a row is a 400 from the provider.
+  assert.deepEqual(contents.map(c => c.role), ['user', 'model', 'user']);
+  assert.equal(contents[0].parts[0].text, 'System prompt.\n\nWhat is clause 1?\nAnd clause 2?');
+  assert.equal(contents[1].parts[0].text, 'Clause 1 says X.\nClause 2 says Y.');
+  assert.equal(contents[2].parts[0].text, 'Thanks.');
+  for (let i = 1; i < contents.length; i++) {
+    assert.notEqual(contents[i].role, contents[i - 1].role);
+  }
 });
 
 test('a leading model message still alternates after the system prompt', () => {
@@ -31,7 +35,7 @@ test('blank messages are dropped and the input is not mutated', () => {
     { role: 'user', content: 'Follow-up.' },
   ];
   const contents = buildChatContents(messages, 'System prompt.');
-  assert.equal(contents.length, 2);
-  assert.equal(contents[1].parts[0].text, 'Real question.\nFollow-up.');
+  assert.equal(contents.length, 1);
+  assert.equal(contents[0].parts[0].text, 'System prompt.\n\nReal question.\nFollow-up.');
   assert.equal(messages[1].content, 'Real question.');
 });

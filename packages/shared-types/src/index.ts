@@ -52,7 +52,8 @@ export interface ChatMessage {
 
 export interface ProcessingProgress {
   contractId: string;
-  stage: 'extracting' | 'segmenting' | 'classifying' | 'retrieving' | 'generating' | 'completed' | 'failed';
+  // 'pending' is the upload stage, before the pipeline's own stages begin.
+  stage: 'pending' | 'extracting' | 'segmenting' | 'classifying' | 'retrieving' | 'generating' | 'completed' | 'failed';
   message: string;
   percent: number;
 }

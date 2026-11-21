@@ -6,8 +6,10 @@ export type ButtonVariant = 'primary' | 'outline' | 'ghost' | 'danger' | 'subtle
 export type ButtonSize = 'sm' | 'md' | 'lg' | 'icon';
 
 const variants: Record<ButtonVariant, string> = {
+  // Solid brand button: white text on the indigo accent in both themes,
+  // so the label stays readable where the old tinted style was a ghost.
   primary:
-    'bg-accent-cyan/10 text-accent-cyan border border-accent-cyan/30 hover:bg-accent-cyan/20 hover:border-accent-cyan shadow-[0_0_15px_rgba(75,75,160,0.08)]',
+    'bg-accent-cyan text-white hover:bg-accent-cyan/90 active:bg-accent-cyan border border-accent-cyan shadow-card hover:shadow-lift',
   outline:
     'border border-overlay/10 bg-transparent text-text-secondary hover:text-text-primary hover:bg-overlay/5 hover:border-overlay/20',
   ghost:

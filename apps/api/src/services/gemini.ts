@@ -119,9 +119,22 @@ export function buildChatContents(
     if (last && last.role === message.role) last.content += '\n' + message.content;
     else merged.push({ role: message.role, content: message.content });
   }
+  const contents = merged.map(msg => ({ role: msg.role, parts: [{ text: msg.content }] }));
+  // Gemini rejects consecutive same-role contents. The system prompt is
+  // sent as a user turn, so when the history opens with a user message the
+  // prompt folds into it instead of emitting two user turns in a row; when
+  // the history opens with a model turn the prompt stays its own user turn
+  // and the roles still alternate.
+  if (contents.length > 0 && contents[0].role === 'user') {
+    contents[0] = {
+      role: 'user',
+      parts: [{ text: `${systemPrompt}\n\n${contents[0].parts[0].text}` }],
+    };
+    return contents;
+  }
   return [
     { role: 'user', parts: [{ text: systemPrompt }] },
-    ...merged.map(msg => ({ role: msg.role, parts: [{ text: msg.content }] })),
+    ...contents,
   ];
 }
 

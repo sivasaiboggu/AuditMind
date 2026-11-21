@@ -16,6 +16,18 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
+  // Theme tokens for the canvas, re-read only when the theme changes —
+  // reading getComputedStyle every animation frame was wasted work, the
+  // same fix the landing canvas got in round 5.
+  const themeTokensRef = useRef({ bg: '#111111', grid: 'rgba(255,255,255,0.01)' });
+  useEffect(() => {
+    const rootStyles = getComputedStyle(document.documentElement);
+    themeTokensRef.current = {
+      bg: rootStyles.getPropertyValue('--canvas-bg').trim() || '#111111',
+      grid: rootStyles.getPropertyValue('--canvas-grid').trim() || 'rgba(255,255,255,0.01)',
+    };
+  }, [theme]);
+
   // Redirect to dashboard if session already active
   useEffect(() => {
     if (!authLoading && user) {
@@ -26,7 +38,7 @@ export default function Login() {
   // Synapse background animation
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || navigator.hardwareConcurrency < 4) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
@@ -63,10 +75,8 @@ export default function Login() {
     window.addEventListener('resize', resizeHandler);
 
     const animate = () => {
-      // Read the theme tokens each frame so the canvas follows a theme toggle.
-      const rootStyles = getComputedStyle(document.documentElement);
-      const canvasBg = rootStyles.getPropertyValue('--canvas-bg').trim() || '#080A0F';
-      const gridStroke = rootStyles.getPropertyValue('--canvas-grid').trim() || 'rgba(255,255,255,0.015)';
+      // Theme tokens are cached in a ref and refreshed on theme change.
+      const { bg: canvasBg, grid: gridStroke } = themeTokensRef.current;
       ctx.fillStyle = canvasBg;
       ctx.fillRect(0, 0, width, height);
 
@@ -95,7 +105,7 @@ export default function Login() {
 
         ctx.beginPath();
         ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0, 229, 255, 0.35)';
+        ctx.fillStyle = 'rgba(75, 75, 160, 0.35)';
         ctx.fill();
       });
 
@@ -108,7 +118,7 @@ export default function Login() {
 
           if (dist < 130) {
             const alpha = (1 - dist / 130) * 0.12;
-            ctx.strokeStyle = `rgba(0, 229, 255, ${alpha})`;
+            ctx.strokeStyle = `rgba(75, 75, 160, ${alpha})`;
             ctx.beginPath();
             ctx.moveTo(nodes[i].x, nodes[i].y);
             ctx.lineTo(nodes[j].x, nodes[j].y);
@@ -117,7 +127,11 @@ export default function Login() {
         }
       }
 
-      animationFrameId = requestAnimationFrame(animate);
+      // Respect reduced-motion: draw one static frame instead of animating.
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (!reduceMotion) {
+        animationFrameId = requestAnimationFrame(animate);
+      }
     };
 
     animate();
@@ -176,7 +190,7 @@ export default function Login() {
     <div className="relative min-h-screen flex items-center justify-center p-4 overflow-hidden">
       <canvas ref={canvasRef} className="absolute inset-0 z-0 pointer-events-none" />
 
-      <div className="scanlines absolute inset-0 pointer-events-none z-1"></div>
+      <div className="scanlines absolute inset-0 pointer-events-none z-[1]"></div>
 
       <button
         onClick={toggleTheme}
@@ -190,7 +204,7 @@ export default function Login() {
 
       <div className="relative z-10 w-full max-w-md glass-panel p-8 rounded border border-overlay/5 shadow-2xl">
         <div className="flex flex-col items-center mb-8">
-          <div className="w-12 h-12 rounded bg-background-base border border-accent-cyan/40 text-accent-cyan flex items-center justify-center mb-3 shadow-[0_0_20px_rgba(0,229,255,0.25)]">
+          <div className="w-12 h-12 rounded bg-background-base border border-accent-cyan/40 text-accent-cyan flex items-center justify-center mb-3 shadow-[0_0_20px_rgba(75,75,160,0.25)]">
             <Shield className="w-6 h-6 animate-pulse" />
           </div>
           <h1 className="font-mono text-2xl font-bold tracking-wider text-text-primary">
@@ -232,7 +246,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-accent-cyan/10 hover:bg-accent-cyan/20 border border-accent-cyan/30 hover:border-accent-cyan text-accent-cyan font-mono text-sm py-2.5 rounded flex items-center justify-center gap-2 precise-transition shadow-[0_0_15px_rgba(0,229,255,0.05)] cursor-pointer disabled:opacity-50"
+              className="w-full bg-accent-cyan/10 hover:bg-accent-cyan/20 border border-accent-cyan/30 hover:border-accent-cyan text-accent-cyan font-mono text-sm py-2.5 rounded flex items-center justify-center gap-2 precise-transition shadow-[0_0_15px_rgba(75,75,160,0.05)] cursor-pointer disabled:opacity-50"
             >
               {loading ? 'Sending code...' : 'Send Verification OTP'}
               <ArrowRight className="w-4 h-4" />
