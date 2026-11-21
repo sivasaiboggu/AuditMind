@@ -23,6 +23,10 @@ export interface Clause {
   title: string;       // e.g. "Indemnification" or "Confidentiality"
   text: string;        // original text of the clause
   riskLevel: RiskLevel;
+  /** Per-clause review-priority score (0–100), uncalibrated — the same
+   * score the pipeline stores and averages into the contract's overall
+   * score. Absent when no score was stored for the clause. */
+  riskScore?: number;
   riskExplanation: string; // plain English explanation
   suggestedRedline?: string; // proposed safer alternative text
 }

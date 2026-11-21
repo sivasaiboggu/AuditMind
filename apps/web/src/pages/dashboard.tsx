@@ -1,4 +1,5 @@
 import { jobStatusNotice } from '../lib/job-status';
+import { buildTrendData, countByRiskBucket, riskBucket } from '../lib/dashboard';
 import { workspaceGuard } from '../lib/workspace-guard';
 import { authenticatedFetch } from '../lib/api';
 import { useEffect, useMemo, useState, useRef } from 'react';
@@ -32,14 +33,6 @@ const rowVariants: Variants = {
   hidden: { opacity: 0, y: 8 },
   show: { opacity: 1, y: 0, transition: { duration: 0.25, ease: [0.16, 1, 0.3, 1] } },
 };
-
-/** Risk bucket matching the distribution chart thresholds. */
-function riskBucket(score: number): Exclude<RiskFilter, 'all'> {
-  if (score >= 75) return 'critical';
-  if (score >= 50) return 'high';
-  if (score >= 25) return 'medium';
-  return 'low';
-}
 
 const selectClassName =
   'rounded-lg border border-overlay/10 bg-background-panel px-3 py-2.5 text-xs font-mono text-text-secondary outline-none focus:border-accent-cyan/50 precise-transition';
@@ -124,46 +117,16 @@ export default function Dashboard() {
     ? Math.round(completedContracts.reduce((acc, c) => acc + c.overallRiskScore, 0) / completedContracts.length)
     : 0;
 
-  // Group contracts by month based on database dates
-  const trendData = (() => {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const now = new Date();
-    const last6Months = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      last6Months.push({
-        monthName: months[d.getMonth()],
-        year: d.getFullYear(),
-        monthIndex: d.getMonth(),
-        sum: 0,
-        count: 0
-      });
-    }
+  // Average risk over completed contracts only; a processing contract
+  // still carries its placeholder score of 0.
+  const trendData = useMemo(() => buildTrendData(contracts), [contracts]);
 
-    contracts.forEach((c) => {
-      if (c.status !== 'completed' || !c.createdAt) return;
-      const date = new Date(c.createdAt);
-      const mIdx = date.getMonth();
-      const y = date.getFullYear();
-
-      const bucket = last6Months.find(b => b.monthIndex === mIdx && b.year === y);
-      if (bucket) {
-        bucket.sum += c.overallRiskScore || 0;
-        bucket.count += 1;
-      }
-    });
-
-    return last6Months.map(b => ({
-      name: b.monthName,
-      avgRisk: b.count > 0 ? Math.round(b.sum / b.count) : 0
-    }));
-  })();
-
+  const riskCounts = useMemo(() => countByRiskBucket(contracts), [contracts]);
   const distributionData = [
-    { name: 'Critical', count: contracts.filter(c => c.overallRiskScore >= 75).length, color: '#EF4444' },
-    { name: 'High', count: contracts.filter(c => c.overallRiskScore >= 50 && c.overallRiskScore < 75).length, color: '#F97316' },
-    { name: 'Medium', count: contracts.filter(c => c.overallRiskScore >= 25 && c.overallRiskScore < 50).length, color: '#EAB308' },
-    { name: 'Low', count: contracts.filter(c => c.overallRiskScore < 25 && c.status === 'completed').length, color: '#10B981' },
+    { name: 'Critical', count: riskCounts.critical, color: '#EF4444' },
+    { name: 'High', count: riskCounts.high, color: '#F97316' },
+    { name: 'Medium', count: riskCounts.medium, color: '#EAB308' },
+    { name: 'Low', count: riskCounts.low, color: '#10B981' },
   ];
 
   // Chart colours adapt to the active theme (cyan line is unreadable on white).
@@ -364,7 +327,7 @@ export default function Dashboard() {
                     <div className="text-3xl font-sans font-bold text-text-primary">
                       {contracts.length}
                     </div>
-                    <p className="text-[10px] font-sans text-text-secondary mt-1 uppercase">Total Contracts</p>
+                    <p className="text-[10px] font-sans text-text-secondary mt-1 uppercase">Total Contracts · {completedContracts.length} analysed</p>
                   </div>
                 </Card>
 
@@ -377,7 +340,7 @@ export default function Dashboard() {
                     <div className="text-3xl font-sans font-bold text-risk-critical">
                       {highRiskContracts.length}
                     </div>
-                    <p className="text-[10px] font-sans text-text-secondary mt-1 uppercase">High Risk</p>
+                    <p className="text-[10px] font-sans text-text-secondary mt-1 uppercase">High Risk · of {completedContracts.length} analysed</p>
                   </div>
                 </Card>
 
@@ -390,7 +353,7 @@ export default function Dashboard() {
                     <div className="text-3xl font-sans font-bold text-text-primary">
                       {contracts.filter(c => c.status === 'processing').length}
                     </div>
-                    <p className="text-[10px] font-sans text-text-secondary mt-1 uppercase">Analyzing</p>
+                    <p className="text-[10px] font-sans text-text-secondary mt-1 uppercase">Analyzing · in progress now</p>
                   </div>
                 </Card>
 
@@ -403,7 +366,7 @@ export default function Dashboard() {
                     <div className="text-3xl font-sans font-bold text-text-primary">
                       {avgRiskScore}%
                     </div>
-                    <p className="text-[10px] font-sans text-text-secondary mt-1 uppercase">Average Score</p>
+                    <p className="text-[10px] font-sans text-text-secondary mt-1 uppercase">Average Score · across {completedContracts.length} analysed</p>
                   </div>
                 </Card>
               </div>
@@ -418,6 +381,11 @@ export default function Dashboard() {
                     Risk Score Trend
                   </CardTitle>
                 </div>
+                {completedContracts.length === 0 && (
+                  <p className="text-xs text-text-muted font-sans -mt-2 mb-4">
+                    No completed analyses yet — the trend appears once a contract finishes. Months with no completions stay blank, not zero.
+                  </p>
+                )}
                 <div className="h-[200px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
@@ -434,7 +402,7 @@ export default function Dashboard() {
                         labelClassName="font-mono text-xs text-text-secondary"
                         itemStyle={{ fontFamily: 'JetBrains Mono', fontSize: '12px' }}
                       />
-                      <Area type="monotone" dataKey="avgRisk" stroke={chartLine} strokeWidth={1.5} fillOpacity={1} fill="url(#colorRisk)" />
+                      <Area type="monotone" dataKey="avgRisk" stroke={chartLine} strokeWidth={1.5} fillOpacity={1} fill="url(#colorRisk)" connectNulls={false} />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -447,6 +415,11 @@ export default function Dashboard() {
                     Risk Level Distribution
                   </CardTitle>
                 </div>
+                {completedContracts.length === 0 && (
+                  <p className="text-xs text-text-muted font-sans -mt-2 mb-4">
+                    No completed analyses yet — the distribution fills in once a contract finishes.
+                  </p>
+                )}
                 <div className="h-[200px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={distributionData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>

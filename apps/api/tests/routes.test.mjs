@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import WebSocket from 'ws';
 import { once } from 'node:events';
 import { buildApp } from '../dist/app.js';
 
-function isolatedStore({storageFails = false, metadataFailsOnce = false, processing = false, missingPath = false, ownershipReadFails = false, insertFails = false, insertUnknown = false, clauseReadFails = false} = {}) {
+function isolatedStore({storageFails = false, metadataFailsOnce = false, processing = false, missingPath = false, ownershipReadFails = false, insertFails = false, insertUnknown = false, clauseReadFails = false, clauseRiskScore} = {}) {
   const rows = [
     { id: 'contract-a', user_id: 'user-a', name: 'Synthetic A', file_path: 'a.txt', status: 'completed' },
     { id: 'contract-b', user_id: 'user-b', name: 'Synthetic B', file_path: 'b.txt', status: 'completed' },
@@ -38,7 +39,7 @@ function isolatedStore({storageFails = false, metadataFailsOnce = false, process
             effects.deleted.push(...data.map(r=>r.id));
           }
           if(table==='clauses' && clauseReadFails) return Promise.resolve({data:null,error:new Error('private-context-error')}).then(resolve,reject);
-          if(table==='clauses') data=[{id:'clause',contract_id:filters.contract_id,text:'Synthetic contract text'}];
+          if(table==='clauses') data=[{id:'clause',contract_id:filters.contract_id,number:'Section 1',title:'Synthetic clause',text:'Synthetic contract text',...(clauseRiskScore !== undefined ? {risk_score: clauseRiskScore} : {})}];
           if(rangeArgs) data=data.slice(rangeArgs[0],rangeArgs[1]+1);
           return Promise.resolve({data,error:null}).then(resolve,reject);
         }
@@ -144,6 +145,29 @@ test('health reports configured state without pretending it probed connectivity'
   const {app}=await fixture();
   try {assert.match((await app.inject({url:'/health'})).json().database,/not checked/);}
   finally {await app.close();}
+});
+
+test('health reports the same version as the api package, not a hard-coded string',async()=>{
+  const {app}=await fixture();
+  try {
+    const pkg=JSON.parse(fs.readFileSync(new URL('../package.json',import.meta.url),'utf8'));
+    assert.equal((await app.inject({url:'/health'})).json().version,pkg.version);
+  } finally {await app.close();}
+});
+
+test('clause endpoint returns the stored per-clause score and omits it when none was stored',async()=>{
+  const scored=await fixture({clauseRiskScore:82});
+  try {
+    const body=(await scored.app.inject({url:'/contracts/contract-a/clauses',headers:headers('user-a')})).json();
+    assert.equal(body.length,1);
+    assert.equal(body[0].riskScore,82);
+  } finally {await scored.app.close();}
+  const plain=await fixture();
+  try {
+    const body=(await plain.app.inject({url:'/contracts/contract-a/clauses',headers:headers('user-a')})).json();
+    assert.equal(body.length,1);
+    assert.equal('riskScore' in body[0],false);
+  } finally {await plain.app.close();}
 });
 
 test('contract list is paginated and rejects invalid pagination',async()=>{

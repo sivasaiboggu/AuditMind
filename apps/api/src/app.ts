@@ -337,6 +337,13 @@ app.get('/contracts/:id/clauses', async (req, reply) => {
     title: c.title,
     text: c.text,
     riskLevel: c.risk_level,
+    // The pipeline stores a per-clause score and averages it into the
+    // contract's overall score, but this endpoint used to drop it — the
+    // review UI could only show the tier, never the number behind it.
+    // Omit it when nothing valid was stored rather than inventing a 0.
+    ...(typeof c.risk_score === 'number' && Number.isFinite(c.risk_score)
+      ? { riskScore: c.risk_score }
+      : {}),
     riskExplanation: c.risk_explanation,
     suggestedRedline: c.suggested_redline
   }));

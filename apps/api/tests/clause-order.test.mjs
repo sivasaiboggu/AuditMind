@@ -35,3 +35,14 @@ test('sorting does not mutate the input array', () => {
   sortClausesByNumber(clauses);
   assert.deepEqual(clauses.map(c => c.number), ['Section 2', 'Section 1']);
 });
+
+test('a stored clause with no number sorts as unnumbered instead of throwing', () => {
+  const clauses = [
+    {number: 'Section 2', title: 'B'},
+    {number: null, title: 'Unnumbered'},
+    {number: undefined, title: 'Also unnumbered'},
+    {number: 'Section 1', title: 'A'},
+  ];
+  assert.deepEqual(sortClausesByNumber(clauses).map(c => c.title),
+    ['Unnumbered', 'Also unnumbered', 'A', 'B']);
+});

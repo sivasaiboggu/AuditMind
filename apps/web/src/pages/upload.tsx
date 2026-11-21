@@ -197,7 +197,11 @@ export default function UploadPage() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      handleUploadFile(e.target.files[0]);
+      const file = e.target.files[0];
+      // Reset the input so picking the same file again — after a rejection
+      // or an interrupted upload — fires onChange instead of being ignored.
+      e.target.value = '';
+      handleUploadFile(file);
     }
   };
 

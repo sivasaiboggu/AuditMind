@@ -1,7 +1,34 @@
 # Changelog
 All notable changes will be documented here.
 
-## Unreleased
+## 1.0.4 — 21 Nov 2026
+- Patch release (1.0.4): premium UI pass (round 7) plus a senior logic
+  review. Full suites re-verified: API 172 passed, ML 24 passed
+  (+61 subtests), web 14 passed, scripts 3 passed, 0 failed.
+- Logic fix: the risk-trend chart plotted 0 for months with no completed
+  contracts, reading as "zero risk" instead of "no data". Months with no
+  completions now leave a gap (null), and the trend/distribution builders
+  moved into a tested pure module (`apps/web/src/lib/dashboard.ts`).
+- Logic fix: the pipeline computed and stored a per-clause risk score and
+  averaged it into the contract score, but the clauses endpoint never
+  returned it — the review UI could only show the tier. The endpoint now
+  returns `riskScore` when a valid score is stored (omitted, never a
+  fabricated 0, when none is), and clause cards and the analysis panel
+  show it.
+- Logic fix: a stored clause with a NULL number crashed clause sorting
+  and took the whole clause list down with a 500. The commit check never
+  required `number`, and the column is nullable, so unnumbered rows now
+  sort first instead of throwing.
+- Chat: a dropped WebSocket used to leave chat unusable until a full page
+  reload. The footer now offers a Reconnect button that re-runs the
+  socket setup in place.
+- Upload: picking the same file again after a rejection was silently
+  ignored because the file input was never reset. It is now.
+- UI: stat cards state their denominator ("of N analysed"); charts say
+  plainly when there are no completed analyses yet instead of rendering
+  empty axes.
+
+## 1.0.3 — 21 Nov 2026
 - Patch release (1.0.3, 21 Nov 2026): premium UI pass (round 6) plus a
   senior logic review. Full suites re-verified: API 169 passed, ML 24
   passed (+61 subtests), web 7 passed, scripts 3 passed, 0 failed.

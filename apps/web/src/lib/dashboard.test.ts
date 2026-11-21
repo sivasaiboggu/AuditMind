@@ -1,0 +1,107 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import type { Contract } from '@auditmind/shared-types';
+import { buildTrendData, countByRiskBucket, riskBucket } from './dashboard';
+
+const contract = (
+  overrides: Partial<Pick<Contract, 'status' | 'createdAt' | 'overallRiskScore'>>,
+): Pick<Contract, 'status' | 'createdAt' | 'overallRiskScore'> => ({
+  status: 'completed',
+  createdAt: '2026-11-20T00:00:00.000Z',
+  overallRiskScore: 50,
+  ...overrides,
+});
+
+describe('riskBucket', () => {
+  it('uses the same thresholds as the distribution chart', () => {
+    assert.equal(riskBucket(100), 'critical');
+    assert.equal(riskBucket(75), 'critical');
+    assert.equal(riskBucket(74), 'high');
+    assert.equal(riskBucket(50), 'high');
+    assert.equal(riskBucket(49), 'medium');
+    assert.equal(riskBucket(25), 'medium');
+    assert.equal(riskBucket(24), 'low');
+    assert.equal(riskBucket(0), 'low');
+  });
+});
+
+describe('buildTrendData', () => {
+  // Fixed "now" so month buckets are deterministic.
+  const now = new Date(2026, 10, 21); // 21 Nov 2026
+
+  it('averages completed contracts per month over the last six months', () => {
+    const points = buildTrendData(
+      [
+        contract({ createdAt: '2026-11-05T00:00:00.000Z', overallRiskScore: 80 }),
+        contract({ createdAt: '2026-11-15T00:00:00.000Z', overallRiskScore: 60 }),
+        contract({ createdAt: '2026-10-02T00:00:00.000Z', overallRiskScore: 30 }),
+      ],
+      now,
+    );
+    assert.deepEqual(points.map((p) => p.name), ['Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov']);
+    assert.equal(points[4].avgRisk, 30);
+    assert.equal(points[5].avgRisk, 70);
+  });
+
+  it('leaves a null gap for months with no completed contracts instead of plotting zero risk', () => {
+    const points = buildTrendData(
+      [contract({ createdAt: '2026-11-05T00:00:00.000Z', overallRiskScore: 80 })],
+      now,
+    );
+    assert.deepEqual(
+      points.map((p) => p.avgRisk),
+      [null, null, null, null, null, 80],
+    );
+  });
+
+  it('excludes processing and failed contracts, whose scores are placeholders', () => {
+    const points = buildTrendData(
+      [
+        contract({ status: 'processing', createdAt: '2026-11-05T00:00:00.000Z', overallRiskScore: 0 }),
+        contract({ status: 'failed', createdAt: '2026-11-05T00:00:00.000Z', overallRiskScore: 0 }),
+      ],
+      now,
+    );
+    assert.deepEqual(points.map((p) => p.avgRisk), [null, null, null, null, null, null]);
+  });
+
+  it('skips contracts with a missing or unparseable date instead of filing them under the current month', () => {
+    const points = buildTrendData(
+      [
+        contract({ createdAt: 'not-a-date', overallRiskScore: 90 }),
+        contract({ createdAt: '', overallRiskScore: 90 }),
+      ],
+      now,
+    );
+    assert.deepEqual(points.map((p) => p.avgRisk), [null, null, null, null, null, null]);
+  });
+
+  it('buckets across the year boundary', () => {
+    const january = new Date(2027, 0, 15);
+    const points = buildTrendData(
+      [contract({ createdAt: '2026-12-20T00:00:00.000Z', overallRiskScore: 40 })],
+      january,
+    );
+    assert.deepEqual(points.map((p) => p.name), ['Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan']);
+    assert.equal(points[4].avgRisk, 40);
+    assert.equal(points[5].avgRisk, null);
+  });
+});
+
+describe('countByRiskBucket', () => {
+  it('counts each bucket and keeps unreviewed contracts out of Low', () => {
+    assert.deepEqual(
+      countByRiskBucket([
+        contract({ overallRiskScore: 90 }),
+        contract({ overallRiskScore: 60 }),
+        contract({ overallRiskScore: 30 }),
+        contract({ overallRiskScore: 10 }),
+        // A processing contract still carries its placeholder score of 0:
+        // it must not inflate the Low bar.
+        contract({ status: 'processing', overallRiskScore: 0 }),
+        contract({ status: 'failed', overallRiskScore: 0 }),
+      ]),
+      { critical: 1, high: 1, medium: 1, low: 1 },
+    );
+  });
+});

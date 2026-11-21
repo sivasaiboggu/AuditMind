@@ -59,8 +59,12 @@ function romanToInt(token: string): number | null {
   return total;
 }
 
-/** The number part of a clause label: "Section 4.2" -> "4.2", "Preamble" -> "". */
+/** The number part of a clause label: "Section 4.2" -> "4.2", "Preamble" -> "".
+ * The column is nullable and the commit check does not require it, so a
+ * stored row with no number must sort as unnumbered — not throw and take
+ * the whole clause list down with it. */
 function clauseToken(label: string): string {
+  if (typeof label !== 'string') return '';
   const match = /^(?:section|article|clause)\s+([0-9]+(?:\.[0-9]+)*|[IVXLCDM]+)\b/i.exec(label.trim());
   if (match) return match[1];
   const bare = /^([0-9]+(?:\.[0-9]+)*|[IVXLCDM]+)\b/.exec(label.trim());

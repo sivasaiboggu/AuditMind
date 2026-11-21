@@ -38,6 +38,9 @@ export default function ContractView() {
   const [chatInput, setChatInput] = useState('');
   const [isChatGenerating, setIsChatGenerating] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
+  // Bumped by the Reconnect button: re-runs the socket effect without a
+  // full page reload when the chat connection drops.
+  const [wsEpoch, setWsEpoch] = useState(0);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -229,6 +232,7 @@ export default function ContractView() {
   // 2. Configure WebSocket connection for real-time document chat
   useEffect(() => {
     const ownerCurrent = workspaceGuard();
+    setWsConnected(false);
     const ws = new WebSocket(WS_URL);
     wsRef.current = ws;
 
@@ -260,7 +264,7 @@ export default function ContractView() {
       wsRef.current = null;
       ws.close();
     };
-  }, [id, user?.id]);
+  }, [id, user?.id, wsEpoch]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -569,7 +573,17 @@ export default function ContractView() {
                       )}
                       {clause.number ? `[${clause.number}]` : ''} {clause.title}
                     </span>
-                    <Badge tone={getRiskTone(clause.riskLevel)}>{clause.riskLevel}</Badge>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {typeof clause.riskScore === 'number' && (
+                        <span
+                          title="Review-priority score (0–100), uncalibrated — the number behind this risk tier"
+                          className="font-mono text-[10px] font-bold text-text-secondary border border-overlay/10 rounded px-1.5 py-0.5"
+                        >
+                          {clause.riskScore}
+                        </span>
+                      )}
+                      <Badge tone={getRiskTone(clause.riskLevel)}>{clause.riskLevel}</Badge>
+                    </div>
                   </div>
                   <p className="text-xs text-text-secondary font-sans line-clamp-3 leading-relaxed">
                     {clause.text}
@@ -661,9 +675,19 @@ export default function ContractView() {
                         {selectedClause.number ? `${selectedClause.number}: ` : ''}{selectedClause.title}
                       </h3>
                     </div>
-                    <Badge tone={getRiskTone(selectedClause.riskLevel)} className="px-3 py-1.5 text-xs">
-                      {selectedClause.riskLevel} Risk
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      {typeof selectedClause.riskScore === 'number' && (
+                        <span
+                          title="Review-priority score (0–100), uncalibrated"
+                          className="font-mono text-xs font-bold text-text-secondary border border-overlay/10 rounded px-2 py-1.5"
+                        >
+                          Score {selectedClause.riskScore} / 100
+                        </span>
+                      )}
+                      <Badge tone={getRiskTone(selectedClause.riskLevel)} className="px-3 py-1.5 text-xs">
+                        {selectedClause.riskLevel} Risk
+                      </Badge>
+                    </div>
                   </div>
 
                   <div className="space-y-2">
@@ -923,9 +947,18 @@ export default function ContractView() {
                         <Send className="w-4 h-4" />
                       </button>
                     </form>
-                    <p className="text-[10px] text-text-muted/40 font-mono mt-2 text-center">
-                      {wsConnected ? 'Connected · AI output needs legal review' : 'Offline · Reload to reconnect'}
-                    </p>
+                    <div className="mt-2 flex items-center justify-center gap-2 text-[10px] text-text-muted/40 font-mono">
+                      <span>{wsConnected ? 'Connected · AI output needs legal review' : 'Offline · chat is paused'}</span>
+                      {!wsConnected && (
+                        <button
+                          type="button"
+                          onClick={() => setWsEpoch((v) => v + 1)}
+                          className="text-accent-cyan hover:text-text-primary underline underline-offset-2 precise-transition"
+                        >
+                          Reconnect
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
