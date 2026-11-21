@@ -41,6 +41,21 @@ describe('countByRisk', () => {
   it('is empty for no clauses', () => {
     assert.deepEqual(countByRisk([]), { critical: 0, high: 0, medium: 0, low: 0 });
   });
+
+  it('ignores unexpected risk levels instead of corrupting the counts', () => {
+    // Rows arrive from the API: a level outside the four known ones must
+    // be skipped. On a plain object, `counts["toString"] += 1` coerces
+    // the inherited function to a string and stores garbage in the counts.
+    assert.deepEqual(
+      countByRisk([
+        clause({}),
+        clause({ id: 'cl-2', riskLevel: 'toString' as RiskLevel }),
+        clause({ id: 'cl-3', riskLevel: 'constructor' as RiskLevel }),
+        clause({ id: 'cl-4', riskLevel: '__proto__' as RiskLevel }),
+      ]),
+      { critical: 1, high: 0, medium: 0, low: 0 },
+    );
+  });
 });
 
 describe('reportFileName', () => {
@@ -88,5 +103,14 @@ describe('buildReportMarkdown', () => {
   it('does not invent content: every clause line comes from the input', () => {
     const md = buildReportMarkdown(contract, [clause({})]);
     assert.doesNotMatch(md, /AI-?generated|recommended|negotiate/i);
+  });
+
+  it('does not let an unexpected risk level corrupt the summary counts', () => {
+    const md = buildReportMarkdown(contract, [
+      clause({ riskLevel: 'toString' as RiskLevel }),
+    ]);
+    assert.match(md, /- Critical risk: 0/);
+    assert.match(md, /- High risk: 0/);
+    assert.doesNotMatch(md, /function toString/);
   });
 });

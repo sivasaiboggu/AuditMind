@@ -1,5 +1,5 @@
 import { authenticatedFetch, sendAuthenticated } from '../lib/api';
-import { buildReportMarkdown, reportFileName } from '../lib/report';
+import { buildReportMarkdown, countByRisk, reportFileName } from '../lib/report';
 import { workspaceGuard } from '../lib/workspace-guard';
 import { chatHistory, interruptChat, INCOMPLETE_ANSWER } from '../lib/chat-stream';
 import { useState, useEffect, useRef, useMemo } from 'react';
@@ -86,11 +86,9 @@ export default function ContractView() {
       : `${label(rankA > rankB ? a : b)} carries the higher risk. Start there.`;
   }, [compareClauses]);
 
-  const riskCounts = useMemo(() => {
-    const counts: Record<RiskLevel, number> = { critical: 0, high: 0, medium: 0, low: 0 };
-    for (const clause of activeClauses) counts[clause.riskLevel] += 1;
-    return counts;
-  }, [activeClauses]);
+  // Same guarded counter as the report export: an unexpected risk level
+  // from the API must be ignored, not counted (see countByRisk).
+  const riskCounts = useMemo(() => countByRisk(activeClauses), [activeClauses]);
 
   const toggleCompare = (clause: Clause) => {
     let next: string[];
@@ -865,31 +863,31 @@ export default function ContractView() {
                     </div>
 
                     {chatMessages.map((msg) => {
-                      const isLocalSearch = msg.message.startsWith(INCOMPLETE_ANSWER);
+                      const isIncomplete = msg.message.startsWith(INCOMPLETE_ANSWER);
                       const isUser = msg.sender === 'user';
                       return (
                         <div key={msg.id} className={`flex items-end gap-2.5 ${isUser ? 'flex-row-reverse' : ''}`}>
                           {!isUser && (
                             <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 border ${
-                              isLocalSearch
+                              isIncomplete
                                 ? 'bg-risk-medium/15 border-risk-medium/30'
                                 : 'bg-accent-cyan/10 border-accent-cyan/20'
                             }`}>
-                              <Bot className={`w-3.5 h-3.5 ${isLocalSearch ? 'text-risk-medium' : 'text-accent-cyan'}`} />
+                              <Bot className={`w-3.5 h-3.5 ${isIncomplete ? 'text-risk-medium' : 'text-accent-cyan'}`} />
                             </div>
                           )}
                           <div className={`relative group max-w-[80%] px-3.5 py-2.5 rounded-2xl text-sm font-sans leading-relaxed border ${
                             isUser
                               ? 'bg-accent-cyan/10 border-accent-cyan/20 rounded-br-sm text-text-primary'
-                              : isLocalSearch
+                              : isIncomplete
                               ? 'bg-amber-500/5 border-amber-500/20 rounded-bl-sm text-amber-700 dark:text-amber-200'
                               : 'bg-overlay/3 border-overlay/8 rounded-bl-sm text-text-secondary'
                           }`}>
                             {!isUser && (
                               <span className={`block text-[9px] font-mono mb-1.5 uppercase tracking-wider ${
-                                isLocalSearch ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-text-muted'
+                                isIncomplete ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-text-muted'
                               }`}>
-                                {isLocalSearch ? 'Incomplete response' : 'AuditMind'}
+                                {isIncomplete ? 'Incomplete response' : 'AuditMind'}
                               </span>
                             )}
                             <div className="whitespace-pre-line select-text break-words">{msg.message}</div>

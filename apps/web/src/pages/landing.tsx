@@ -49,16 +49,22 @@ export default function Landing() {
       });
     }
 
+    // Respect reduced-motion: draw one static frame instead of animating.
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
     const handleResize = () => {
       if (!canvas) return;
       width = canvas.width = window.innerWidth;
       height = canvas.height = window.innerHeight;
+      // With reduced motion only one static frame is ever drawn, and
+      // resizing clears the canvas — redraw that frame so the background
+      // does not go blank. When animating, the running loop repaints on
+      // its next frame, so no extra draw is scheduled here.
+      if (reduceMotion) animate();
     };
     window.addEventListener('resize', handleResize);
 
     let animationFrameId: number;
-    // Respect reduced-motion: draw one static frame instead of animating.
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     function animate() {
       // Theme tokens are cached in a ref and refreshed on theme change.

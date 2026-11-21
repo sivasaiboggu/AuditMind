@@ -1,5 +1,5 @@
 import { jobStatusNotice } from '../lib/job-status';
-import { buildTrendData, countByRiskBucket, riskBucket } from '../lib/dashboard';
+import { buildTrendData, countByRiskBucket, countHighRiskCompleted, riskBucket } from '../lib/dashboard';
 import { workspaceGuard } from '../lib/workspace-guard';
 import { authenticatedFetch } from '../lib/api';
 import { useEffect, useMemo, useState, useRef } from 'react';
@@ -110,9 +110,10 @@ export default function Dashboard() {
   // Compute stats based on active database entries
   const completedContracts = contracts.filter(c => c.status === 'completed');
   // Same buckets as the distribution chart and the risk filter: high risk
-  // is high or critical (>= 50). The card used to count >= 70, which
-  // matched neither the chart's critical bucket (>= 75) nor its label.
-  const highRiskContracts = contracts.filter(c => ['high', 'critical'].includes(riskBucket(c.overallRiskScore)));
+  // is high or critical (>= 50), counted among completed analyses only —
+  // the card captions this "of N analysed", so a processing or failed
+  // contract must never count even if it ever carries a score.
+  const highRiskContracts = countHighRiskCompleted(contracts);
   const avgRiskScore = completedContracts.length > 0
     ? Math.round(completedContracts.reduce((acc, c) => acc + c.overallRiskScore, 0) / completedContracts.length)
     : 0;
@@ -173,11 +174,15 @@ export default function Dashboard() {
     setSortBy('date-desc');
   };
 
+  // One bucket function for the score chip, so the 75/50/25 thresholds
+  // live in exactly one place (riskBucket) and cannot drift apart again.
   const getRiskColor = (score: number) => {
-    if (score >= 75) return 'text-risk-critical border-risk-critical/20 bg-risk-critical/5';
-    if (score >= 50) return 'text-risk-high border-risk-high/20 bg-risk-high/5';
-    if (score >= 25) return 'text-risk-medium border-risk-medium/20 bg-risk-medium/5';
-    return 'text-risk-low border-risk-low/20 bg-risk-low/5';
+    switch (riskBucket(score)) {
+      case 'critical': return 'text-risk-critical border-risk-critical/20 bg-risk-critical/5';
+      case 'high': return 'text-risk-high border-risk-high/20 bg-risk-high/5';
+      case 'medium': return 'text-risk-medium border-risk-medium/20 bg-risk-medium/5';
+      default: return 'text-risk-low border-risk-low/20 bg-risk-low/5';
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -338,7 +343,7 @@ export default function Dashboard() {
                   </div>
                   <div className="mt-4">
                     <div className="text-3xl font-sans font-bold text-risk-critical">
-                      {highRiskContracts.length}
+                      {highRiskContracts}
                     </div>
                     <p className="text-[10px] font-sans text-text-secondary mt-1 uppercase">High Risk · of {completedContracts.length} analysed</p>
                   </div>

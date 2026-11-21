@@ -2,11 +2,15 @@ import type { Clause, Contract, RiskLevel } from '@auditmind/shared-types';
 
 const RISK_ORDER: RiskLevel[] = ['critical', 'high', 'medium', 'low'];
 
-/** Count clauses per risk level, in critical-first order. */
+/** Count clauses per risk level, in critical-first order. The lookup is
+ * guarded against prototype keys: clause rows arrive from the API, so an
+ * unexpected level such as "toString" must be ignored, not counted —
+ * `counts["toString"] += 1` on a plain object would corrupt the counts
+ * with a coerced function string instead. */
 export function countByRisk(clauses: Clause[]): Record<RiskLevel, number> {
   const counts: Record<RiskLevel, number> = { critical: 0, high: 0, medium: 0, low: 0 };
   for (const clause of clauses) {
-    if (clause.riskLevel in counts) counts[clause.riskLevel] += 1;
+    if (Object.prototype.hasOwnProperty.call(counts, clause.riskLevel)) counts[clause.riskLevel] += 1;
   }
   return counts;
 }

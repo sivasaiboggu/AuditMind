@@ -70,3 +70,18 @@ export function countByRiskBucket(
   }
   return counts;
 }
+
+/** High-risk contracts among completed analyses only. The dashboard card
+ * captions this count "of N analysed", so an unreviewed contract must
+ * never count here: its placeholder score is 0 today, but the card must
+ * not depend on that staying true if a score is ever set before review. */
+export function countHighRiskCompleted(
+  contracts: Pick<Contract, 'status' | 'overallRiskScore'>[],
+): number {
+  return contracts.filter(
+    (contract) =>
+      contract.status === 'completed' &&
+      (riskBucket(contract.overallRiskScore) === 'high' ||
+        riskBucket(contract.overallRiskScore) === 'critical'),
+  ).length;
+}

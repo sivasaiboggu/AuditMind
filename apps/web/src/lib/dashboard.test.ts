@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Contract } from '@auditmind/shared-types';
-import { buildTrendData, countByRiskBucket, riskBucket } from './dashboard';
+import { buildTrendData, countByRiskBucket, countHighRiskCompleted, riskBucket } from './dashboard';
 
 const contract = (
   overrides: Partial<Pick<Contract, 'status' | 'createdAt' | 'overallRiskScore'>>,
@@ -85,6 +85,31 @@ describe('buildTrendData', () => {
     assert.deepEqual(points.map((p) => p.name), ['Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan']);
     assert.equal(points[4].avgRisk, 40);
     assert.equal(points[5].avgRisk, null);
+  });
+});
+
+describe('countHighRiskCompleted', () => {
+  it('counts completed high and critical contracts, matching the card caption "of N analysed"', () => {
+    assert.equal(
+      countHighRiskCompleted([
+        contract({ overallRiskScore: 90 }),
+        contract({ overallRiskScore: 60 }),
+        contract({ overallRiskScore: 30 }),
+        contract({ overallRiskScore: 10 }),
+      ]),
+      2,
+    );
+  });
+
+  it('never counts an unreviewed contract, even one carrying a high score', () => {
+    assert.equal(
+      countHighRiskCompleted([
+        contract({ status: 'processing', overallRiskScore: 90 }),
+        contract({ status: 'failed', overallRiskScore: 80 }),
+        contract({ status: 'processing', overallRiskScore: 0 }),
+      ]),
+      0,
+    );
   });
 });
 

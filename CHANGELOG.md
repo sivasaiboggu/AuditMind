@@ -1,6 +1,36 @@
 # Changelog
 All notable changes will be documented here.
 
+## 1.0.5 — 21 Nov 2026
+- Patch release (1.0.5): premium UI pass (round 8) plus a senior logic
+  review. Full suites re-verified: API 172 passed, ML 24 passed
+  (+61 subtests), web 18 passed, scripts 3 passed, 0 failed.
+- Logic fix: `countByRisk` (and the contract view's inline copy of it)
+  counted clause risk levels with `in` / direct indexing on a plain
+  object, so an unexpected level from the API such as "toString" was
+  counted as the string `function toString() { [native code] }1` instead
+  of being ignored. The counter now guards with hasOwnProperty, the
+  contract view reuses the one tested helper, and the report summary
+  cannot be corrupted this way.
+- Logic fix: the dashboard "High Risk" card counted contracts of any
+  status while captioning itself "of N analysed". A processing or failed
+  contract must never count even if it ever carries a score; the card
+  now uses a tested `countHighRiskCompleted` helper (completed analyses
+  only). The score chip's colours also go through the single `riskBucket`
+  function now, so the 75/50/25 thresholds cannot drift apart again.
+- Logic fix: with `prefers-reduced-motion` the landing and login canvases
+  draw one static frame, but resizing the window clears the canvas and
+  nothing redrew it — the background went blank. A resize now redraws
+  that one frame; when animating, the running loop repaints as before.
+- UI: the OTP field now requests the numeric keyboard and SMS one-time-code
+  autofill (`inputMode="numeric"`, `autoComplete="one-time-code"`).
+- UI: the chat code called an interrupted answer "Local Search Mode" in a
+  variable name; it is now honestly named `isIncomplete` (label and
+  styling unchanged).
+- UI: `index.html` referenced `/og-image.png` for social shares, but no
+  such file was ever in the repo — shares got a 404. The tag is removed
+  until a real 1200x630 asset is added.
+
 ## 1.0.4 — 21 Nov 2026
 - Patch release (1.0.4): premium UI pass (round 7) plus a senior logic
   review. Full suites re-verified: API 172 passed, ML 24 passed

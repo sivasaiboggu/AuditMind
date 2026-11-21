@@ -67,10 +67,19 @@ export default function Login() {
       });
     }
 
+    // Respect reduced-motion: draw one static frame instead of animating.
+    const prefersReducedMotion = () =>
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
     const resizeHandler = () => {
       if (!canvas) return;
       width = canvas.width = window.innerWidth;
       height = canvas.height = window.innerHeight;
+      // With reduced motion only one static frame is ever drawn, and
+      // resizing clears the canvas — redraw that frame so the background
+      // does not go blank. When animating, the running loop repaints on
+      // its next frame, so no extra draw is scheduled here.
+      if (prefersReducedMotion()) animate();
     };
     window.addEventListener('resize', resizeHandler);
 
@@ -128,8 +137,7 @@ export default function Login() {
       }
 
       // Respect reduced-motion: draw one static frame instead of animating.
-      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      if (!reduceMotion) {
+      if (!prefersReducedMotion()) {
         animationFrameId = requestAnimationFrame(animate);
       }
     };
@@ -267,6 +275,8 @@ export default function Login() {
                 type="text"
                 required
                 maxLength={6}
+                inputMode="numeric"
+                autoComplete="one-time-code"
                 value={otpCode}
                 onChange={(e) => setOtpCode(e.target.value)}
                 placeholder="123456"

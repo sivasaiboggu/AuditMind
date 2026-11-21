@@ -8,7 +8,7 @@ from risk_rules import compute_local_heuristics, count_heuristic_matches, valida
 
 # Single source of truth for the ML service version; keep in sync with the
 # monorepo release in the root package.json.
-APP_VERSION = "1.0.4"
+APP_VERSION = "1.0.5"
 
 
 @asynccontextmanager
