@@ -191,7 +191,7 @@ export default function Landing() {
 
       {/* Features */}
       <section className="max-w-7xl mx-auto px-6 py-16 z-10">
-        <div className="grid md:grid-cols-3 gap-6">
+        <div className="stagger-rise grid md:grid-cols-3 gap-6">
           {[
             {
               icon: Cpu,

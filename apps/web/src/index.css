@@ -202,3 +202,20 @@
 .precise-transition {
   transition: all 250ms cubic-bezier(0.16, 1, 0.3, 1);
 }
+
+/* Staggered entrance for a row/grid of siblings (React Bits style):
+   add `stagger-rise` to the container; each direct child rises in turn. */
+.stagger-rise > * {
+  animation: stagger-rise 450ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.stagger-rise > *:nth-child(1) { animation-delay: 0.02s; }
+.stagger-rise > *:nth-child(2) { animation-delay: 0.08s; }
+.stagger-rise > *:nth-child(3) { animation-delay: 0.14s; }
+.stagger-rise > *:nth-child(4) { animation-delay: 0.2s; }
+.stagger-rise > *:nth-child(5) { animation-delay: 0.26s; }
+.stagger-rise > *:nth-child(6) { animation-delay: 0.32s; }
+
+@keyframes stagger-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}

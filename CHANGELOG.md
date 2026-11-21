@@ -2,6 +2,10 @@
 All notable changes will be documented here.
 
 ## Unreleased
+- Patch release (1.0.1, 21 Nov 2026): no feature changes. This repo has
+  no Dockerfiles, so there was nothing to build-test. Full suites
+  re-verified: API 169 passed, ML 24 passed (+61 subtests), web 7
+  passed, 0 failed.
 - One-click report export: the contract view can download a Markdown risk
   report (overall score, per-level counts, every clause with its text,
   risk explanation and suggested revision, plus a "not legal advice"
