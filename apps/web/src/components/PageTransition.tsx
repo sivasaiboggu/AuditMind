@@ -1,16 +1,16 @@
-import { motion } from 'framer-motion';
+import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 
-/** Fade/slide wrapper for route changes (used with AnimatePresence in App). */
 export function PageTransition({ children }: { children: ReactNode }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8 }}
-      transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-    >
-      {children}
-    </motion.div>
-  );
+  const routeRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const target = routeRef.current;
+    if (!target) return;
+    // Keep the first paint visible and move keyboard focus off the old route.
+    if (document.activeElement === document.body) target.focus({ preventScroll: true });
+    window.scrollTo(0, 0);
+  }, []);
+
+  return <div ref={routeRef} tabIndex={-1} className="outline-none">{children}</div>;
 }

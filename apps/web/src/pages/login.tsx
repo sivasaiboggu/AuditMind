@@ -1,233 +1,124 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import type { FormEvent } from 'react';
+import { Link, Navigate } from 'react-router-dom';
+import { ArrowRight, ArrowUpRight } from 'lucide-react';
+import * as z from 'zod/mini';
+import { SiteFooter, SiteHeader } from '../components/SiteHeader';
 import { useAuth } from '../lib/auth-context';
-import { useTheme } from '../lib/theme';
 import { supabase } from '../lib/supabase';
-import { Shield, Mail, Terminal, ArrowRight, CheckCircle2, Moon, Sun } from 'lucide-react';
+
+const emailSchema = z.pipe(z.string().check(z.trim()), z.email({ error: 'Enter a valid email address.' }));
+const codeSchema = z.string().check(z.trim(), z.regex(/^\d{6}$/, 'Enter the six-digit code from your email.'));
 
 export default function Login() {
   const { user, loading: authLoading, loginWithGoogle, sendOTP, verifyOTP, loginBypass } = useAuth();
-  const { theme, toggleTheme } = useTheme();
-  const navigate = useNavigate();
-  
   const [email, setEmail] = useState('');
-  const [otpCode, setOtpCode] = useState('');
-  const [otpStep, setOtpStep] = useState<'request' | 'verify'>('request');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [code, setCode] = useState('');
+  const [verify, setVerify] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [invalid, setInvalid] = useState(false);
+  const codeInput = useRef<HTMLInputElement>(null);
 
-  // Redirect to dashboard if session already active
-  useEffect(() => {
-    if (!authLoading && user) {
-      navigate('/dashboard');
+  useEffect(() => { if (verify) codeInput.current?.focus(); }, [verify]);
+
+  if (!authLoading && user) return <Navigate to="/dashboard" replace />;
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const value = z.safeParse(verify ? codeSchema : emailSchema, verify ? code : email);
+    if (!value.success) {
+      setInvalid(true);
+      setError(value.error.issues[0].message);
+      return;
     }
-  }, [user, authLoading, navigate]);
-
-  const handleSendCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email) return;
-    setLoading(true);
-    setError(null);
+    setError('');
+    setInvalid(false);
+    setBusy(true);
     try {
-      await sendOTP(email);
-      setOtpStep('verify');
-    } catch (err: any) {
-      setError(err.message || 'Failed to send verification code. Please check SMTP settings.');
+      if (verify) await verifyOTP(email, value.data);
+      else {
+        await sendOTP(value.data);
+        setEmail(value.data);
+        setVerify(true);
+      }
+    } catch (cause) {
+      setError(cause instanceof Error && cause.message ? cause.message : verify ? 'Could not verify the code. Try again.' : 'Could not send the code. Try again.');
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
-  };
+  }
 
-  const handleVerifyCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email || !otpCode) return;
-    setLoading(true);
-    setError(null);
+  async function startSignIn() {
+    setBusy(true);
+    setError('');
     try {
-      await verifyOTP(email, otpCode);
-      navigate('/dashboard');
-    } catch (err: any) {
-      setError(err.message || 'Invalid or expired OTP code.');
+      if (supabase) await loginWithGoogle();
+      else await loginBypass(email.trim() || 'demo.analyst@auditmind.local');
+    } catch {
+      setError(supabase ? 'Google sign-in could not start. Try the email option.' : 'The demo could not open. Try again.');
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
-  };
+  }
 
-  const handleGoogleLogin = async () => {
-    setError(null);
-    try {
-      await loginWithGoogle();
-    } catch (err: any) {
-      setError(err.message || 'Google Auth is unconfigured in Supabase console.');
-    }
-  };
-
-  const handleBypass = async () => {
-    setError(null);
-    try {
-      await loginBypass(email || 'demo.analyst@auditmind.local');
-      navigate('/dashboard');
-    } catch (err: any) {
-      setError(err.message || 'Demo login is unavailable.');
-    }
-  };
+  function resetError() {
+    setInvalid(false);
+    setError('');
+  }
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center p-4 overflow-hidden">
-      <button
-        onClick={toggleTheme}
-        aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-        aria-pressed={theme === 'dark'}
-        title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-        className="absolute top-4 right-4 z-20 p-2 rounded text-text-muted hover:text-text-primary hover:bg-overlay/5 border border-transparent hover:border-overlay/10 precise-transition"
-      >
-        {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-      </button>
+    <div className="public-shell">
+      <SiteHeader />
+      <main id="main-content" tabIndex={-1} className="frame page-stack entry-layout">
+        <section className="entry-lead">
+          <h1 className="page-title">Sign in to<br className="hidden sm:block" /> AuditMind</h1>
+          <p className="lede">Open your contracts, pick up a clause review, or start with a new file.</p>
+          <aside className="margin-note reading text-text-secondary">
+            <p className="font-semibold text-text-primary">Review starts with the source.</p>
+            <p>Have a PDF, DOCX or TXT file ready. Scanned PDFs need readable text.</p>
+          </aside>
+        </section>
 
-      <div className="relative z-10 w-full max-w-md bg-background-panel p-8 rounded border border-overlay/5 shadow-2xl">
-        <div className="flex flex-col items-center mb-8">
-          <div className="w-12 h-12 rounded bg-background-base border border-accent-cyan/40 text-accent-cyan flex items-center justify-center mb-3">
-            <Shield className="w-6 h-6" />
-          </div>
-          <h1 className="font-mono text-2xl font-bold tracking-wider text-text-primary">
-            AUDIT<span className="text-accent-cyan">MIND</span>
-          </h1>
-          <p className="text-text-muted text-xs uppercase font-mono tracking-widest mt-1">
-            Contract Compliance Suite
+        <section className="entry-form sheet" aria-labelledby="sign-in-method">
+          <h2 id="sign-in-method" className="section-title">{supabase ? (verify ? 'Check your email' : 'Sign in with email') : 'Open the local demo'}</h2>
+          <p className="reading mt-3 text-text-secondary">
+            {supabase ? (verify ? <>We sent a six-digit code to <strong>{email}</strong>.</> : 'We’ll send a one-time code to your email address.') : 'This installation has demo access. Connect an authentication provider to review and save your own contracts.'}
           </p>
-        </div>
-
-        {error && (
-          <div className="bg-risk-critical/10 border border-risk-critical/30 rounded p-3 text-xs font-mono text-risk-critical mb-4 flex gap-2">
-            <Terminal className="w-4 h-4 shrink-0" />
-            <span>{error}</span>
+          {supabase && (
+            <form className="mt-6 grid gap-4" onSubmit={submit} noValidate>
+              {verify ? (
+                <div className="grid gap-2">
+                  <label htmlFor="otp">Verification code</label>
+                  <input id="otp" ref={codeInput} className="field font-mono" type="text" inputMode="numeric" autoComplete="one-time-code"
+                    maxLength={6} value={code} required aria-invalid={invalid} aria-describedby={invalid ? 'sign-in-error' : undefined}
+                    onChange={(event) => { setCode(event.target.value); resetError(); }} />
+                </div>
+              ) : (
+                <div className="grid gap-2">
+                  <label htmlFor="email">Email address</label>
+                  <input id="email" className="field" type="email" autoComplete="email" value={email} placeholder="name@example.com"
+                    required aria-invalid={invalid} aria-describedby={invalid ? 'sign-in-error' : undefined}
+                    onChange={(event) => { setEmail(event.target.value); resetError(); }} />
+                </div>
+              )}
+              <button type="submit" disabled={busy} className="action action-primary">
+                {busy ? (verify ? 'Checking code…' : 'Sending code…') : (verify ? 'Verify and sign in' : 'Send sign-in code')}
+                <ArrowRight size={17} aria-hidden="true" />
+              </button>
+              {verify && <button type="button" disabled={busy} className="text-link justify-self-start py-2" onClick={() => { setVerify(false); setCode(''); resetError(); }}>Use a different email</button>}
+            </form>
+          )}
+          {error && <p id="sign-in-error" role="alert" className="margin-note mt-4 text-sm text-risk-critical [--note-ink:var(--risk-critical)]">{error}</p>}
+          <div className={supabase ? 'mt-6 border-t border-rule pt-6' : 'mt-6'}>
+            <button type="button" disabled={busy} className={`action w-full ${supabase ? 'action-outline' : 'action-primary'}`} onClick={() => void startSignIn()}>
+              {supabase ? 'Continue with Google' : 'Continue with a demo account'} <ArrowUpRight size={16} aria-hidden="true" />
+            </button>
           </div>
-        )}
-
-        {otpStep === 'request' ? (
-          <form onSubmit={handleSendCode} className="space-y-4">
-            <div>
-              <label className="block text-xs font-mono text-text-secondary uppercase tracking-wider mb-2">
-                Email Address
-              </label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-text-muted">
-                  <Mail className="w-4 h-4" />
-                </span>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="analyst@firm.com"
-                  className="w-full bg-background-base/80 border border-overlay/10 focus:border-accent-cyan/50 focus:ring-1 focus:ring-accent-cyan/20 outline-none rounded py-2 pl-10 pr-4 text-sm font-mono text-text-primary precise-transition"
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-accent-cyan/10 hover:bg-accent-cyan/20 border border-accent-cyan/30 hover:border-accent-cyan text-accent-cyan font-mono text-sm py-2.5 rounded flex items-center justify-center gap-2 precise-transition cursor-pointer disabled:opacity-50"
-            >
-              {loading ? 'Sending code...' : 'Send Verification OTP'}
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </form>
-        ) : (
-          <form onSubmit={handleVerifyCode} className="space-y-4">
-            <div className="bg-risk-low/10 border border-risk-low/20 text-risk-low text-xs p-3 rounded font-mono flex gap-2 mb-2">
-              <CheckCircle2 className="w-4 h-4 shrink-0" />
-              <span>OTP code sent to {email}. Check your email inbox.</span>
-            </div>
-
-            <div>
-              <label className="block text-xs font-mono text-text-secondary uppercase tracking-wider mb-2">
-                6-Digit OTP Code
-              </label>
-              <input
-                type="text"
-                required
-                maxLength={6}
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                value={otpCode}
-                onChange={(e) => setOtpCode(e.target.value)}
-                placeholder="123456"
-                className="w-full tracking-widest text-center bg-background-base/80 border border-overlay/10 focus:border-accent-cyan/50 focus:ring-1 focus:ring-accent-cyan/20 outline-none rounded py-2.5 px-4 text-lg font-mono text-text-primary precise-transition"
-              />
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setOtpStep('request')}
-                className="w-1/3 bg-overlay/5 hover:bg-overlay/10 border border-overlay/10 text-text-secondary font-mono text-xs py-2.5 rounded precise-transition cursor-pointer"
-              >
-                Back
-              </button>
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-2/3 bg-accent-cyan/10 hover:bg-accent-cyan/20 border border-accent-cyan/30 hover:border-accent-cyan text-accent-cyan font-mono text-sm py-2.5 rounded flex items-center justify-center gap-2 precise-transition cursor-pointer disabled:opacity-50"
-              >
-                {loading ? 'Verifying...' : 'Verify & Sign In'}
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          </form>
-        )}
-
-        <div className="relative flex py-4 items-center">
-          <div className="flex-grow border-t border-overlay/5"></div>
-          <span className="flex-shrink mx-4 text-text-muted text-[10px] uppercase font-mono tracking-widest">
-            or
-          </span>
-          <div className="flex-grow border-t border-overlay/5"></div>
-        </div>
-
-        <button
-          onClick={handleGoogleLogin}
-          className="w-full mb-3 bg-overlay/5 hover:bg-overlay/10 border border-overlay/10 hover:border-overlay/20 text-text-secondary hover:text-text-primary font-mono text-xs py-2.5 rounded flex items-center justify-center gap-2 precise-transition cursor-pointer"
-        >
-          <svg className="w-4 h-4 mr-1" viewBox="0 0 24 24">
-            <path
-              fill="currentColor"
-              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-            />
-            <path
-              fill="currentColor"
-              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-            />
-            <path
-              fill="currentColor"
-              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-            />
-            <path
-              fill="currentColor"
-              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-            />
-          </svg>
-          Sign In with Google
-        </button>
-
-        {/* Demo login only exists when no auth provider is configured:
-            with Supabase set up the button is hidden — it used to render
-            in production and do nothing but throw when clicked. */}
-        {!supabase && (
-          <>
-            <button
-              onClick={handleBypass}
-              className="w-full bg-overlay/5 hover:bg-overlay/10 border border-overlay/10 hover:border-overlay/20 text-text-secondary hover:text-text-primary font-mono text-xs py-2 rounded precise-transition cursor-pointer"
-            >
-              Continue with a demo account
-            </button>
-            <p className="mt-2 text-center text-[10px] font-mono text-text-muted">
-              Demo mode only — no account is created and nothing is saved to a server.
-            </p>
-          </>
-        )}
-      </div>
+          <p className="mt-6 text-sm text-text-muted"><Link to="/privacy" className="text-link">How we handle your data</Link></p>
+        </section>
+      </main>
+      <SiteFooter />
     </div>
   );
 }

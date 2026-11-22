@@ -3,6 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="manifest" href="/site.webmanifest" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <!-- Primary Meta -->
@@ -10,22 +12,26 @@
     <meta name="description" content="Upload a contract, review clause risk scores with plain-English explanations and suggested revisions, and ask questions about the document. Outputs need legal review." />
     <meta name="keywords" content="contract analysis, legal review, risk assessment, NDA review, compliance, contract auditing" />
     <meta name="author" content="AuditMind" />
+    <meta name="robots" content="index, follow" />
 
     <!-- Open Graph / Social -->
     <meta property="og:type" content="website" />
     <meta property="og:title" content="AuditMind — Contract Risk Review" />
     <meta property="og:description" content="Upload a contract and review clause risk scores, explanations and suggested revisions. Outputs need legal review." />
-    <!-- No og:image: the file it used to point at was never in the repo,
-         so social shares got a 404. Add a real 1200x630 asset before
-         re-adding this tag. -->
+    <meta property="og:image" content="https://auditmind.vercel.app/review-preview.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="An AuditMind sample contract finding with the matched wording underlined." />
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="AuditMind — Contract Risk Review" />
     <meta name="twitter:description" content="Upload a contract and review clause risk scores, explanations and suggested revisions. Outputs need legal review." />
 
+    <meta name="twitter:image" content="https://auditmind.vercel.app/review-preview.png" />
+
     <!-- Theme -->
-    <meta name="theme-color" content="#101414" />
+    <meta name="theme-color" content="#1e1d19" />
     <meta name="color-scheme" content="light dark" />
 
     <!-- Apply the saved (or OS-preferred) theme before first paint to avoid a flash -->
@@ -41,10 +47,6 @@
       }
     </script>
 
-    <!-- Preconnect for performance -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   </head>
   <body>
     <div id="root"></div>

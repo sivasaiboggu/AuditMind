@@ -1,66 +1,34 @@
+const color = (token) => ({ opacityValue }) => opacityValue === undefined || opacityValue === '1'
+  ? `var(--${token})`
+  : `color-mix(in srgb, var(--${token}) calc(${opacityValue} * 100%), transparent)`;
+
 /** @type {import('tailwindcss').Config} */
 export default {
-  // Class-based dark mode so the theme can be toggled at runtime and
-  // persisted; `.dark` on <html> activates the dark token set in index.css.
   darkMode: 'class',
-  content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
-  ],
+  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
       colors: {
-        // Theme tokens resolve to CSS variables defined in index.css.
-        // `background` / `text` / `overlay` / `accent` switch between the
-        // light and dark token sets; risk hues are identical in both.
-        background: {
-          base: 'oklch(var(--bg-base) / <alpha-value>)',
-          panel: 'oklch(var(--bg-panel) / <alpha-value>)',
-          hover: 'oklch(var(--bg-hover) / <alpha-value>)',
-        },
-        // Subtle tint used for translucent surfaces and hairline borders:
-        // white in dark mode, dark slate in light mode.
-        overlay: 'oklch(var(--overlay) / <alpha-value>)',
-        // One accent, a theme token: teal-700 on paper, teal-400 on ink.
-        // The indigo/violet pair is gone — it read as the default
-        // purple-blue SaaS accent. Risk hues are the only other colours.
-        accent: {
-          cyan: 'oklch(var(--accent) / <alpha-value>)',
-          brand: 'oklch(var(--accent) / <alpha-value>)',
-        },
-        // Risk hues are per-theme OKLCH tokens (see index.css): light mode
-        // uses the darker step so small badge text passes WCAG AA on white;
-        // dark mode keeps the bright step. Chart fills in dashboard.tsx
-        // keep the bright hexes — fills are not text.
+        background: { base: color('bg-base'), panel: color('bg-panel'), hover: color('bg-hover') },
+        rule: color('rule'),
+        control: color('control'),
+        overlay: color('overlay'),
+        accent: { brand: color('accent'), ink: color('on-accent') },
         risk: {
-          critical: 'oklch(var(--risk-critical) / <alpha-value>)',
-          high: 'oklch(var(--risk-high) / <alpha-value>)',
-          medium: 'oklch(var(--risk-medium) / <alpha-value>)',
-          low: 'oklch(var(--risk-low) / <alpha-value>)',
+          critical: color('risk-critical'),
+          high: color('risk-high'),
+          medium: color('risk-medium'),
+          low: color('risk-low'),
         },
-        text: {
-          primary: 'oklch(var(--text-primary) / <alpha-value>)',
-          secondary: 'oklch(var(--text-secondary) / <alpha-value>)',
-          muted: 'oklch(var(--text-muted) / <alpha-value>)',
-        },
+        text: { primary: color('text-primary'), secondary: color('text-secondary'), muted: color('text-muted') },
       },
       fontFamily: {
-        // One superfamily (see docs/design-references-1.0.6.md): IBM Plex
-        // Sans for everything sans, IBM Plex Mono for labels, IDs, scores
-        // and shortcuts. Inter / JetBrains Mono are out.
-        sans: [
-          'IBM Plex Sans',
-          '-apple-system',
-          'BlinkMacSystemFont',
-          '"Segoe UI"',
-          'Roboto',
-          'Helvetica',
-          'Arial',
-          'sans-serif',
-        ],
-        mono: ['IBM Plex Mono', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
+        sans: ['var(--font-text)'],
+        display: ['var(--font-display)'],
+        mono: ['var(--font-mono)'],
       },
+      boxShadow: { inset: 'var(--shadow-1)', sheet: 'var(--shadow-2)', floating: 'var(--shadow-3)' },
+      borderRadius: { DEFAULT: 'var(--radius-control)' },
     },
   },
-  plugins: [],
-}
+};

@@ -1,98 +1,70 @@
+import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
-import { AnimatePresence } from 'framer-motion';
 import { AuthProvider } from './lib/auth-context';
 import { ThemeProvider } from './lib/theme';
-import { ProtectedRoute } from './components/protected-route';
+import { ProtectedRoute, RouteLoading } from './components/protected-route';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { PageTransition } from './components/PageTransition';
-
-// Pages
 import Landing from './pages/landing';
-import Login from './pages/login';
-import Dashboard from './pages/dashboard';
-import ContractView from './pages/contract-view';
-import Upload from './pages/upload';
-import NotFound from './pages/not-found';
 
-function AnimatedRoutes() {
-  const location = useLocation();
+const Login = lazy(() => import('./pages/login'));
+const Dashboard = lazy(() => import('./pages/dashboard'));
+const ContractView = lazy(() => import('./pages/contract-view'));
+const Upload = lazy(() => import('./pages/upload'));
+const NotFound = lazy(() => import('./pages/not-found'));
+const Legal = lazy(() => import('./pages/legal'));
+
+const routeTitles: Record<string, string> = {
+  '/': 'Contract risk review',
+  '/login': 'Sign in',
+  '/dashboard': 'Contracts',
+  '/upload': 'Upload a contract',
+  '/privacy': 'Privacy',
+  '/terms': 'Terms of use',
+};
+
+function AppRoutes() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    const review = pathname.startsWith('/contract/');
+    const path = pathname.replace(/\/$/, '') || '/';
+    const title = routeTitles[path] || (review ? 'Contract review' : 'Page not found');
+    document.title = `${title} · AuditMind`;
+    document.querySelector('meta[name="robots"]')?.setAttribute(
+      'content', ['/', '/terms', '/privacy'].includes(path) ? 'index, follow' : 'noindex, follow',
+    );
+  }, [pathname]);
   return (
-    <AnimatePresence mode="wait">
-      <Routes location={location} key={location.pathname}>
-        <Route
-          path="/"
-          element={
-            <PageTransition>
-              <Landing />
-            </PageTransition>
-          }
-        />
-        <Route
-          path="/login"
-          element={
-            <PageTransition>
-              <Login />
-            </PageTransition>
-          }
-        />
-
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <PageTransition>
-                <Dashboard />
-              </PageTransition>
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/contract/:id"
-          element={
-            <ProtectedRoute>
-              <PageTransition>
-                <ContractView />
-              </PageTransition>
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/upload"
-          element={
-            <ProtectedRoute>
-              <PageTransition>
-                <Upload />
-              </PageTransition>
-            </ProtectedRoute>
-          }
-        />
-
-        {/* 404 fallback */}
-        <Route
-          path="*"
-          element={
-            <PageTransition>
-              <NotFound />
-            </PageTransition>
-          }
-        />
-      </Routes>
-    </AnimatePresence>
+    <>
+      <a href="#main-content" className="skip-link">Skip to content</a>
+      <Suspense fallback={<RouteLoading message="Opening page…" />}>
+        <PageTransition key={pathname}>
+          <Routes>
+            <Route path="/" element={<Landing />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/contract/:id" element={<ProtectedRoute><ContractView /></ProtectedRoute>} />
+            <Route path="/upload" element={<ProtectedRoute><Upload /></ProtectedRoute>} />
+            <Route path="/privacy" element={<Legal kind="privacy" />} />
+            <Route path="/terms" element={<Legal kind="terms" />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </PageTransition>
+      </Suspense>
+    </>
   );
 }
 
 export default function App() {
   return (
-    <ErrorBoundary>
-      <ThemeProvider>
+    <ThemeProvider>
+      <ErrorBoundary>
         <AuthProvider>
           <BrowserRouter>
-            <AnimatedRoutes />
+            <AppRoutes />
           </BrowserRouter>
         </AuthProvider>
-      </ThemeProvider>
-    </ErrorBoundary>
+      </ErrorBoundary>
+    </ThemeProvider>
   );
 }

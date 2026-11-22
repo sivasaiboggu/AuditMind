@@ -4,19 +4,41 @@ import { splitByMatchedTerms, formatMatchedTerms } from '../lib/evidence';
 import { workspaceGuard } from '../lib/workspace-guard';
 import { chatHistory, interruptChat, INCOMPLETE_ANSWER } from '../lib/chat-stream';
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useContractStore } from '../store/contractStore';
 import { useAuth } from '../lib/auth-context';
 import { useKeyboard } from '../hooks/useKeyboard';
 import { Navbar } from '../components/Navbar';
-import { Badge, Card, EmptyState, Skeleton } from '../components/ui';
-import type { BadgeTone } from '../components/ui';
-import { cn, copyToClipboard } from '../lib/utils';
-import { AlertTriangle, ArrowLeft, Send, FileEdit, MessageSquareCode, FileText, Copy, CheckCheck, Wifi, WifiOff, Bot, Download, Search, X, GitCompare, Check } from 'lucide-react';
+import { Badge, Button, EmptyState, Skeleton } from '../components/ui';
+import { copyToClipboard } from '../lib/utils';
+import { ArrowLeft, ArrowRight, Send, FileText, Copy, Check, Download, Search, GitCompare, MessageSquare } from 'lucide-react';
 import type { Clause, ChatMessage, RiskLevel } from '@auditmind/shared-types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3000/ws';
+
+const riskLevels = ['critical', 'high', 'medium', 'low'] as const;
+const riskRank = { low: 1, medium: 2, high: 3, critical: 4 };
+const nextSteps: Record<RiskLevel, string> = {
+  critical: 'Have a lawyer review this clause before signing. Discuss the exposure and any proposed revision.',
+  high: 'Discuss the clause with the other party and record any agreed changes in writing.',
+  medium: 'Ask the other party to clarify the obligation in writing.',
+  low: 'Keep the clause with the rest of the agreement and check it against your requirements.',
+};
+
+function SourceText({ clause }: { clause: Clause }) {
+  const terms = clause.matchedTerms ?? [];
+  return (
+    <>
+      <blockquote className="margin-note reading text-text-secondary">
+        {splitByMatchedTerms(clause.text, terms).map((segment, index) => segment.matched
+          ? <strong key={index} className="font-semibold text-text-primary underline decoration-accent-brand decoration-2 underline-offset-4">{segment.text}</strong>
+          : segment.text)}
+      </blockquote>
+      {terms.length > 0 && <p className="mt-3 text-sm text-text-muted">Matched words · <span className="text-text-primary">{formatMatchedTerms(terms)}</span></p>}
+    </>
+  );
+}
 
 export default function ContractView() {
   const { id } = useParams<{ id: string }>();
@@ -34,6 +56,7 @@ export default function ContractView() {
 
   const [clausesLoading, setClausesLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const clauseIndex = useRef<HTMLElement>(null);
   const [selectedClause, setSelectedClause] = useState<Clause | null>(null);
   const [activeTab, setActiveTab] = useState<'analysis' | 'chat' | 'compare'>('analysis');
   const [chatInput, setChatInput] = useState('');
@@ -43,7 +66,7 @@ export default function ContractView() {
   // full page reload when the chat connection drops.
   const [wsEpoch, setWsEpoch] = useState(0);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const chatLogRef = useRef<HTMLDivElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const failPendingChat = useRef<(() => void) | null>(null);
 
@@ -75,16 +98,15 @@ export default function ContractView() {
   );
 
   /** Derived compare verdict — from the two clauses' own risk levels only. */
-  const RISK_RANK: Record<RiskLevel, number> = { low: 1, medium: 2, high: 3, critical: 4 };
   const compareSummary = useMemo(() => {
     if (compareClauses.length !== 2) return null;
     const [a, b] = compareClauses;
-    const rankA = RISK_RANK[a.riskLevel];
-    const rankB = RISK_RANK[b.riskLevel];
+    const rankA = riskRank[a.riskLevel];
+    const rankB = riskRank[b.riskLevel];
     const label = (c: Clause) => c.number || c.title;
     return rankA === rankB
-      ? 'Both clauses carry the same risk level — review the explanations below to see why.'
-      : `${label(rankA > rankB ? a : b)} carries the higher risk. Start there.`;
+      ? 'Both clauses have the same risk level.'
+      : `${label(rankA > rankB ? a : b)} has the higher risk level.`;
   }, [compareClauses]);
 
   // Same guarded counter as the report export: an unexpected risk level
@@ -111,38 +133,30 @@ export default function ContractView() {
     setActiveTab('analysis');
   };
 
-  // Arrow keys move the selection through the filtered clause list.
-  // Skipped while typing in an input or textarea.
-  useKeyboard('ArrowDown', () => {
-    const tag = document.activeElement?.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-    if (filteredClauses.length === 0) return;
-    const idx = filteredClauses.findIndex((c) => c.id === selectedClause?.id);
-    setSelectedClause(filteredClauses[Math.min(idx + 1, filteredClauses.length - 1)]);
-  });
-  useKeyboard('ArrowUp', () => {
-    const tag = document.activeElement?.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-    if (filteredClauses.length === 0) return;
-    const idx = filteredClauses.findIndex((c) => c.id === selectedClause?.id);
-    setSelectedClause(filteredClauses[Math.max(idx - 1, 0)]);
-  });
-
-  // "/" focuses the clause search, Escape clears it — both skipped while
-  // typing anywhere else, so they never steal keystrokes from an input.
   const searchInputRef = useRef<HTMLInputElement>(null);
-  useKeyboard('/', (e) => {
-    const tag = document.activeElement?.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-    e.preventDefault();
+
+  function moveClause(event: KeyboardEvent, offset: number) {
+    const target = document.activeElement;
+    if (!target || !clauseIndex.current?.contains(target) || !target.matches('button[data-clause]') || !filteredClauses.length) return;
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    event.preventDefault();
+    const index = filteredClauses.findIndex((clause) => clause.id === target.getAttribute('data-clause'));
+    const next = Math.max(0, Math.min(index + offset, filteredClauses.length - 1));
+    const nextClause = filteredClauses[next];
+    if (!compareMode) setSelectedClause(nextClause);
+    clauseIndex.current.querySelectorAll<HTMLButtonElement>('button[data-clause]')[next]?.focus();
+  }
+
+  useKeyboard('ArrowDown', (event) => moveClause(event, 1));
+  useKeyboard('ArrowUp', (event) => moveClause(event, -1));
+  useKeyboard('/', (event) => {
+    const target = document.activeElement;
+    if (!target || !clauseIndex.current?.contains(target) || target.matches('input, textarea, select') || event.altKey || event.metaKey || event.ctrlKey) return;
+    event.preventDefault();
     searchInputRef.current?.focus();
   });
   useKeyboard('Escape', () => {
-    // Only when the search box itself (or nothing) has focus — Escape
-    // while typing in chat must not wipe the clause search.
-    if (!clauseQuery) return;
-    const el = document.activeElement;
-    if (el === searchInputRef.current || el === document.body) setClauseQuery('');
+    if (document.activeElement === searchInputRef.current) setClauseQuery('');
   });
 
   /** Download a Markdown risk report built only from this contract's own data. */
@@ -266,8 +280,9 @@ export default function ContractView() {
   }, [id, user?.id, wsEpoch]);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages]);
+    const messages = chatLogRef.current;
+    if (messages) messages.scrollTop = messages.scrollHeight;
+  }, [chatMessages, activeTab]);
 
   const handleLogout = async () => {
     await logout();
@@ -346,695 +361,231 @@ export default function ContractView() {
 
   };
 
-  const getRiskBorder = (level: string) => {
-    switch (level) {
-      case 'critical': return 'border-l-4 border-risk-critical';
-      case 'high': return 'border-l-4 border-risk-high';
-      case 'medium': return 'border-l-4 border-risk-medium';
-      default: return 'border-l-4 border-risk-low';
-    }
-  };
-
-  const getRiskTone = (level: string): BadgeTone => {
-    switch (level) {
-      case 'critical': return 'critical';
-      case 'high': return 'high';
-      case 'medium': return 'medium';
-      default: return 'low';
-    }
-  };
-
-  /** The evidence line, in the clause's own risk colour: the exact words
-   * that earned the tier. Static class strings so Tailwind generates them. */
-  const getRiskText = (level: string) => {
-    switch (level) {
-      case 'critical': return 'text-risk-critical';
-      case 'high': return 'text-risk-high';
-      case 'medium': return 'text-risk-medium';
-      default: return 'text-risk-low';
-    }
-  };
-
-  const getRiskUnderline = (level: string) => {
-    switch (level) {
-      case 'critical': return 'decoration-risk-critical';
-      case 'high': return 'decoration-risk-high';
-      case 'medium': return 'decoration-risk-medium';
-      default: return 'decoration-risk-low';
-    }
-  };
-
-  /** The clause text with its matched words underlined in the risk colour —
-   * the evidence, in place, not a separate list to cross-reference. */
-  const renderClauseText = (clause: Clause) => {
-    const terms = clause.matchedTerms ?? [];
-    if (terms.length === 0) return clause.text;
-    return splitByMatchedTerms(clause.text, terms).map((segment, i) =>
-      segment.matched ? (
-        <span key={i} className={`underline decoration-2 underline-offset-2 font-semibold ${getRiskUnderline(clause.riskLevel)}`}>
-          {segment.text}
-        </span>
-      ) : (
-        <span key={i}>{segment.text}</span>
-      ),
-    );
-  };
-
-  /** General next steps for a risk level — guidance, not legal advice,
-   *  and not specific to any one clause's wording. */
-  const NEXT_STEPS: Record<RiskLevel, string> = {
-    critical:
-      'Do not sign as written. Get a lawyer to review this clause and negotiate the suggested revision before proceeding.',
-    high:
-      'Negotiate this clause before signing. Use the suggested revision as a starting point and get any change in writing.',
-    medium:
-      'Ask the other party to clarify this clause in writing so its meaning is not left open to dispute.',
-    low: 'No action needed. This clause looks standard — keep it on file with the rest of the contract.',
-  };
+  const tab = compareClauses.length < 2 && activeTab === 'compare' ? 'analysis' : activeTab;
 
   return (
-    <div className="h-screen h-[100dvh] bg-background-base flex flex-col overflow-hidden">
-      <Navbar currentView="analyzer" setView={(v) => navigate(v === 'dashboard' ? '/dashboard' : `/contract/${id}`)} onLogout={handleLogout} />
-      
-      {/* Sub Header */}
-      <div className="bg-background-panel border-b border-overlay/5 px-4 sm:px-6 py-3 flex flex-wrap gap-3 items-center justify-between shrink-0">
-        <div className="flex items-center gap-3 min-w-0">
-          <button
-            onClick={() => navigate('/dashboard')}
-            aria-label="Back to dashboard"
-            className="p-1.5 rounded hover:bg-overlay/5 border border-transparent hover:border-overlay/10 text-text-secondary hover:text-text-primary precise-transition"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-          <div>
-            <h2 className="text-sm font-mono font-bold text-text-primary uppercase tracking-wide break-all">
-              {activeContract?.name || 'ANALYZER MODE'}
-            </h2>
+    <div className="min-h-screen">
+      <Navbar onLogout={handleLogout} />
+      <main id="main-content" tabIndex={-1} className="frame wide-frame review-main">
+        <header className="workspace-title review-title">
+          <div className="min-w-0">
+            <Link to="/dashboard" className="mb-3 inline-flex min-h-8 items-center gap-2 text-sm text-text-secondary hover:text-accent-brand">
+              <ArrowLeft size={16} aria-hidden="true" /> All contracts
+            </Link>
+            <h1 className="page-title break-words">{activeContract?.name || 'Contract review'}</h1>
+            {activeClauses.length > 0 && (
+              <ul className="mt-4 flex flex-wrap gap-x-4 gap-y-1" aria-label="Clause counts by risk level">
+                <li className="text-sm text-text-secondary">{activeClauses.length} clauses</li>
+                {riskLevels.map((level) => <li key={level}><Badge tone={level} className="capitalize">{riskCounts[level]} {level}</Badge></li>)}
+              </ul>
+            )}
           </div>
-        </div>
+          <Button variant="outline" onClick={handleExportReport} disabled={!activeContract || !activeClauses.length}
+            title="Download a Markdown risk report for this contract">
+            {exported ? <Check size={16} aria-hidden="true" /> : <Download size={16} aria-hidden="true" />}
+            <span aria-live="polite">{exported ? 'Report downloaded' : 'Export report'}</span>
+          </Button>
+        </header>
 
-        <div className="flex flex-wrap gap-2 items-center">
-          <button
-            onClick={handleExportReport}
-            disabled={!activeContract || activeClauses.length === 0}
-            aria-label="Download a Markdown risk report for this contract"
-            title="Download a Markdown risk report for this contract"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-accent-cyan/30 bg-accent-cyan/10 hover:bg-accent-cyan/20 text-accent-cyan text-[11px] font-mono font-bold uppercase tracking-wider precise-transition disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {exported ? <Check className="w-3.5 h-3.5" /> : <Download className="w-3.5 h-3.5" />}
-            {exported ? 'Downloaded' : 'Export report'}
-          </button>
-          <Badge tone="critical">
-            Critical: {activeClauses.filter(c => c.riskLevel === 'critical').length}
-          </Badge>
-          <Badge tone="high">
-            High: {activeClauses.filter(c => c.riskLevel === 'high').length}
-          </Badge>
-          <Badge tone="medium">
-            Med: {activeClauses.filter(c => c.riskLevel === 'medium').length}
-          </Badge>
-        </div>
-      </div>
-
-      {/* Side by Side */}
-      <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden">
-        {/* Left Side */}
-        <div className="w-full md:w-1/2 min-w-0 h-[32%] md:h-auto shrink-0 border-b md:border-r border-overlay/5 flex flex-col bg-background-base overflow-hidden">
-          <div className="border-b border-overlay/5 p-4 flex items-center gap-2 bg-overlay/1">
-            <FileText className="w-4 h-4 text-accent-cyan" />
-            <span className="text-xs font-mono font-bold text-text-secondary uppercase">
-              Contract Clauses
-            </span>
-            <span className="ml-auto text-[10px] font-mono text-text-muted">
-              {filteredClauses.length} of {activeClauses.length}
-            </span>
-          </div>
-
-          {/* Clause search, risk filter and compare toggle */}
-          <div className="border-b border-overlay/5 p-3 space-y-2 bg-background-panel/40">
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 text-text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                ref={searchInputRef}
-                type="search"
-                value={clauseQuery}
-                onChange={(e) => setClauseQuery(e.target.value)}
-                placeholder="Search clauses by number, title or text…"
-                aria-label="Search clauses"
-                className="w-full bg-background-base border border-overlay/10 outline-none rounded-lg py-2 pl-9 pr-8 text-xs font-sans text-text-primary placeholder:text-text-muted/60 focus:border-accent-cyan/50 precise-transition"
-              />
-              {clauseQuery && (
-                <button
-                  onClick={() => setClauseQuery('')}
-                  aria-label="Clear clause search"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-text-muted hover:text-text-primary precise-transition"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+        <div className="review-layout sheet">
+          <section ref={clauseIndex} className="clause-index" aria-labelledby="index-title">
+            <div className="ledger-header">
+              <h2 id="index-title" className="text-xl font-semibold tracking-tight">Clauses</h2>
+              <p className="eyebrow tnum" role="status">{filteredClauses.length} of {activeClauses.length}</p>
+            </div>
+            <div className="grid gap-3 border-b border-rule p-4">
+              <div className="relative">
+                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" aria-hidden="true" />
+                <input ref={searchInputRef} type="search" value={clauseQuery} onChange={(event) => setClauseQuery(event.target.value)}
+                  placeholder="Search clauses" aria-label="Search clauses" aria-keyshortcuts="/" className="field pl-9" />
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <select className="field min-w-0 flex-1 text-sm" aria-label="Filter clauses by risk level" value={riskFilter}
+                  onChange={(event) => setRiskFilter(event.target.value as 'all' | RiskLevel)}>
+                  <option value="all">All risk levels</option>
+                  {riskLevels.map((level) => <option key={level} value={level}>{level[0].toUpperCase()}{level.slice(1)} ({riskCounts[level]})</option>)}
+                </select>
+                <Button variant={compareMode ? 'primary' : 'outline'} size="sm" aria-pressed={compareMode}
+                  onClick={() => (compareMode ? exitCompareMode() : setCompareMode(true))}>
+                  <GitCompare size={16} aria-hidden="true" /> Compare{compareMode ? ` (${compareIds.length}/2)` : ''}
+                </Button>
+              </div>
+              {compareMode && (
+                <p className="text-sm text-text-secondary" role="status">
+                  {compareIds.length === 2 ? 'Two clauses selected.' : 'Select two clauses to compare.'}
+                </p>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter clauses by risk level">
-              {(['all', 'critical', 'high', 'medium', 'low'] as const).map((level) => (
-                <button
-                  key={level}
-                  onClick={() => setRiskFilter(level)}
-                  aria-pressed={riskFilter === level}
-                  className={cn(
-                    'px-2.5 py-1 rounded-full border text-[10px] font-mono font-bold uppercase tracking-wider precise-transition',
-                    riskFilter === level
-                      ? 'bg-accent-cyan/15 border-accent-cyan/40 text-accent-cyan'
-                      : 'border-overlay/10 text-text-muted hover:text-text-secondary hover:border-overlay/20',
-                  )}
-                >
-                  {level === 'all' ? `All (${activeClauses.length})` : `${level} (${riskCounts[level]})`}
-                </button>
-              ))}
-              <button
-                onClick={() => (compareMode ? exitCompareMode() : setCompareMode(true))}
-                aria-pressed={compareMode}
-                title="Pick two clauses to compare side by side"
-                className={cn(
-                  'ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-mono font-bold uppercase tracking-wider precise-transition',
-                  compareMode
-                    ? 'bg-accent-cyan/15 border-accent-cyan/40 text-accent-cyan'
-                    : 'border-overlay/10 text-text-muted hover:text-text-secondary hover:border-overlay/20',
-                )}
-              >
-                <GitCompare className="w-3 h-3" />
-                Compare{compareMode ? ` (${compareIds.length}/2)` : ''}
-              </button>
-            </div>
-            {compareMode && (
-              <p className="text-[10px] font-mono text-text-muted">
-                {compareIds.length < 2
-                  ? 'Pick two clauses to compare them side by side.'
-                  : 'Two clauses picked — open the Compare tab on the right.'}
-              </p>
-            )}
-            <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[10px] font-mono text-text-muted">
-              <span className="kbd">Up</span>
-              <span className="kbd">Down</span>
-              <span className="mr-2">move</span>
-              <span className="kbd">/</span>
-              <span className="mr-2">search</span>
-              <span className="kbd">Esc</span>
-              <span>clear search</span>
-            </p>
-          </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {clausesLoading ? (
-              <div className="space-y-3" aria-busy="true" aria-label="Loading contract clauses">
-                {[0, 1, 2].map((i) => (
-                  <div key={i} className="space-y-2 rounded border border-overlay/5 p-4">
-                    <Skeleton className="h-4 w-2/3" />
-                    <Skeleton className="h-3 w-full" />
-                    <Skeleton className="h-3 w-5/6" />
-                  </div>
-                ))}
-              </div>
-            ) : activeClauses.length === 0 ? (
-              <div className="p-12 text-center text-text-muted font-mono text-xs">
-                {loadError || (activeContract?.status === 'processing' ? 'Analysis is still processing. Return to the dashboard for status updates.' : activeContract?.status === 'failed' ? 'Analysis failed. No completed clause review is available.' : 'No clause results are available for this contract.')}
-              </div>
-            ) : filteredClauses.length === 0 ? (
-              <EmptyState
-                icon={<Search className="w-6 h-6 text-text-muted/50" />}
-                title="No Clauses Match"
-                description="Try a different search term or clear the risk filter to see more clauses."
-              />
-            ) : (
-              filteredClauses.map((clause) => {
-                const inCompare = compareIds.includes(clause.id);
-                return (
-                <Card
-                  key={clause.id}
-                  onClick={() => (compareMode ? toggleCompare(clause) : setSelectedClause(clause))}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      if (compareMode) toggleCompare(clause);
-                      else setSelectedClause(clause);
-                    }
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  aria-pressed={compareMode ? inCompare : selectedClause?.id === clause.id}
-                  aria-label={compareMode
-                    ? `${inCompare ? 'Remove' : 'Add'} clause ${clause.number ? `${clause.number}: ` : ''}${clause.title} ${inCompare ? 'from' : 'to'} comparison`
-                    : `Select clause ${clause.number ? `${clause.number}: ` : ''}${clause.title}`}
-                  className={cn(
-                    'p-4 precise-transition cursor-pointer',
-                    getRiskBorder(clause.riskLevel),
-                    (compareMode ? inCompare : selectedClause?.id === clause.id)
-                      ? 'border-accent-cyan bg-accent-cyan/5 shadow-card'
-                      : 'border-overlay/5 hover:border-overlay/10 hover:bg-overlay/2',
-                  )}
-                >
-                  <div className="flex justify-between items-start gap-3 mb-2">
-                    <span className="font-mono text-xs font-bold text-text-primary">
-                      {compareMode && (
-                        <span
-                          aria-hidden="true"
-                          className={cn(
-                            'inline-flex items-center justify-center w-4 h-4 mr-2 rounded border align-middle',
-                            inCompare
-                              ? 'bg-accent-cyan border-accent-cyan text-background-base'
-                              : 'border-overlay/20 text-transparent',
-                          )}
-                        >
-                          <Check className="w-3 h-3" />
-                        </span>
-                      )}
-                      {clause.number ? `[${clause.number}]` : ''} {clause.title}
-                    </span>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {typeof clause.riskScore === 'number' && (
-                        <span
-                          title="Review-priority score (0–100), uncalibrated — the number behind this risk tier"
-                          className="font-mono text-[10px] font-bold text-text-secondary border border-overlay/10 rounded px-1.5 py-0.5 tnum"
-                        >
-                          {clause.riskScore}
-                        </span>
-                      )}
-                      <Badge tone={getRiskTone(clause.riskLevel)}>{clause.riskLevel}</Badge>
-                    </div>
-                  </div>
-                  <p className="text-xs text-text-secondary font-sans line-clamp-3 leading-relaxed">
-                    {clause.text}
-                  </p>
-                  {clause.matchedTerms && clause.matchedTerms.length > 0 && (
-                    <p className="mt-2 font-mono text-[10px] leading-relaxed">
-                      <span className="text-text-muted uppercase tracking-wider">Matched: </span>
-                      <span className={getRiskText(clause.riskLevel)}>
-                        {formatMatchedTerms(clause.matchedTerms)}
-                      </span>
-                    </p>
-                  )}
-                </Card>
-                );
-              })
-            )}
-          </div>
-        </div>
-
-        {/* Right Side — Tab Layout */}
-        <div className="w-full md:w-1/2 min-w-0 min-h-0 flex-1 flex flex-col bg-background-panel/50 overflow-hidden">
-          {selectedClause || compareClauses.length === 2 ? (
-            <div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
-
-              {/* Tab Bar */}
-              <div className="border-b border-overlay/5 flex flex-wrap items-center bg-background-panel/80 px-2 sm:px-4 gap-1 pt-2 flex-shrink-0">
-                {selectedClause && (
-                <button
-                  onClick={() => setActiveTab('analysis')}
-                  aria-pressed={activeTab === 'analysis'}
-                  className={`px-4 py-2 text-xs font-mono font-bold uppercase tracking-wider rounded-t border-b-2 precise-transition flex items-center gap-1.5 ${
-                    activeTab === 'analysis'
-                      ? 'text-text-primary border-accent-cyan bg-accent-cyan/5'
-                      : 'text-text-muted border-transparent hover:text-text-secondary hover:border-overlay/20'
-                  }`}
-                >
-                  <FileText className="w-3 h-3" />
-                  Analysis
-                </button>
-                )}
-                {selectedClause && (
-                <button
-                  onClick={() => setActiveTab('chat')}
-                  aria-pressed={activeTab === 'chat'}
-                  className={`px-4 py-2 text-xs font-mono font-bold uppercase tracking-wider rounded-t border-b-2 precise-transition flex items-center gap-1.5 ${
-                    activeTab === 'chat'
-                      ? 'text-text-primary border-accent-cyan bg-accent-cyan/5'
-                      : 'text-text-muted border-transparent hover:text-text-secondary hover:border-overlay/20'
-                  }`}
-                >
-                  <MessageSquareCode className="w-3 h-3" />
-                  AI Chat
-                  {chatMessages.length > 0 && (
-                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-accent-cyan/15 border border-accent-cyan/30 text-accent-cyan font-bold">
-                      {chatMessages.length}
-                    </span>
-                  )}
-                </button>
-                )}
-                {compareClauses.length === 2 && (
-                  <button
-                    onClick={() => setActiveTab('compare')}
-                    aria-pressed={activeTab === 'compare'}
-                    className={`px-4 py-2 text-xs font-mono font-bold uppercase tracking-wider rounded-t border-b-2 precise-transition flex items-center gap-1.5 ${
-                      activeTab === 'compare'
-                        ? 'text-text-primary border-accent-cyan bg-accent-cyan/5'
-                        : 'text-text-muted border-transparent hover:text-text-secondary hover:border-overlay/20'
-                    }`}
-                  >
-                    <GitCompare className="w-3 h-3" />
-                    Compare
-                  </button>
-                )}
-
-                {/* Right-side status badge in tab bar */}
-                <div className="ml-auto flex items-center gap-2 mb-1">
-                  <span className={`text-[9px] font-mono uppercase px-2 py-0.5 rounded border flex items-center gap-1 ${
-                    wsConnected
-                      ? 'text-risk-low bg-risk-low/5 border-risk-low/20'
-                      : 'text-risk-medium bg-risk-medium/5 border-risk-medium/20'
-                  }`}>
-                    {wsConnected ? <Wifi className="w-2.5 h-2.5" /> : <WifiOff className="w-2.5 h-2.5" />}
-                    {wsConnected ? 'Live' : 'Offline'}
-                  </span>
+            <div className="clause-index-scroll">
+              {clausesLoading ? (
+                <div className="space-y-3 p-4" aria-busy="true" role="status">
+                  <p className="text-text-secondary">Loading clauses…</p>
+                  {[0, 1, 2].map((index) => <Skeleton key={index} className="h-12 w-full" />)}
                 </div>
-              </div>
-
-              {/* Analysis Tab */}
-              {activeTab === 'analysis' && selectedClause && (
-                <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-5 break-words">
-                  <div className="flex flex-wrap gap-3 justify-between items-start border-b border-overlay/5 pb-4">
-                    <div>
-                      <span className="font-mono text-xs text-accent-cyan uppercase tracking-widest block mb-1">
-                        Clause Analysis
-                      </span>
-                      <h3 className="text-lg font-mono font-bold text-text-primary">
-                        {selectedClause.number ? `${selectedClause.number}: ` : ''}{selectedClause.title}
-                      </h3>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {typeof selectedClause.riskScore === 'number' && (
-                        <span
-                          title="Review-priority score (0–100), uncalibrated"
-                          className="font-mono text-xs font-bold text-text-secondary border border-overlay/10 rounded px-2 py-1.5 tnum"
-                        >
-                          Score {selectedClause.riskScore} / 100
-                        </span>
-                      )}
-                      <Badge tone={getRiskTone(selectedClause.riskLevel)} className="px-3 py-1.5 text-xs">
-                        {selectedClause.riskLevel} Risk
-                      </Badge>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <span className="text-[10px] font-mono text-text-secondary uppercase tracking-widest block">
-                      Original Clause
-                    </span>
-                    <div className="p-4 bg-background-base border border-overlay/5 rounded-lg font-sans text-sm text-text-secondary leading-relaxed select-text">
-                      {renderClauseText(selectedClause)}
-                    </div>
-                    {selectedClause.matchedTerms && selectedClause.matchedTerms.length > 0 && (
-                      <p className="font-mono text-[11px] leading-relaxed">
-                        <span className="text-text-muted uppercase tracking-wider">Matched words: </span>
-                        <span className={getRiskText(selectedClause.riskLevel)}>
-                          {formatMatchedTerms(selectedClause.matchedTerms)}
-                        </span>
-                        <span className="block mt-1 text-[10px] text-text-muted normal-case tracking-normal">
-                          The exact words that earned this risk tier, underlined above.
-                        </span>
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-risk-high" />
-                      <span className="text-[10px] font-mono text-text-primary uppercase tracking-widest">
-                        Risk Explanation
-                      </span>
-                    </div>
-                    <div className="p-4 bg-risk-critical/5 border border-risk-critical/10 rounded-lg font-sans text-sm text-text-secondary leading-relaxed">
-                      {selectedClause.riskExplanation}
-                    </div>
-                  </div>
-
-                  {selectedClause.suggestedRedline && (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <FileEdit className="w-4 h-4 text-risk-low" />
-                        <span className="text-[10px] font-mono text-text-primary uppercase tracking-widest">
-                          Suggested Revision
-                        </span>
-                        <button
-                          onClick={() => void handleCopy(`redline-${selectedClause.id}`, selectedClause.suggestedRedline!)}
-                          aria-label="Copy suggested revision"
-                          className="ml-auto flex items-center gap-1 px-2 py-1 rounded-md border border-overlay/10 text-text-muted hover:text-text-primary hover:border-overlay/20 text-[10px] font-mono font-bold uppercase tracking-wider precise-transition"
-                        >
-                          {copiedId === `redline-${selectedClause.id}` ? <CheckCheck className="w-3 h-3 text-risk-low" /> : <Copy className="w-3 h-3" />}
-                          {copiedId === `redline-${selectedClause.id}` ? 'Copied' : 'Copy'}
+              ) : loadError ? (
+                <EmptyState title="Could not load the review" description={loadError}
+                  action={<Button variant="outline" onClick={() => window.location.reload()}>Reload review</Button>} />
+              ) : activeClauses.length === 0 ? (
+                <EmptyState title={activeContract?.status === 'processing' ? 'Analysis in progress' : 'No clauses available'}
+                  description={activeContract?.status === 'processing' ? 'Check the contract list for updates.' : activeContract?.status === 'failed' ? 'This analysis failed. Open the contract list for details.' : 'This contract has no clause results.'} />
+              ) : filteredClauses.length === 0 ? (
+                <EmptyState title="No matching clauses" description="Change the search or risk filter."
+                  action={<Button variant="outline" onClick={() => { setClauseQuery(''); setRiskFilter('all'); }}>Clear filters</Button>} />
+              ) : (
+                <ul>
+                  {filteredClauses.map((clause) => {
+                    const pressed = compareMode ? compareIds.includes(clause.id) : selectedClause?.id === clause.id;
+                    return (
+                      <li key={clause.id}>
+                        <button type="button" data-clause={clause.id} aria-pressed={pressed}
+                          className="clause-row" onClick={() => compareMode ? toggleCompare(clause) : setSelectedClause(clause)}>
+                          <span className="eyebrow">
+                            <span className="sr-only">{compareMode ? (pressed ? 'Remove from comparison: ' : 'Add to comparison: ') : 'Select clause: '}</span>
+                            {clause.number || 'Clause'}
+                          </span>
+                          <Badge tone={clause.riskLevel} className="justify-self-end capitalize">{clause.riskLevel}</Badge>
+                          <span className="clause-row-name">{compareMode && pressed && <Check size={14} aria-hidden="true" />}{clause.title}</span>
+                          {typeof clause.riskScore === 'number' && <span className="justify-self-end font-mono text-xs text-text-muted tnum">{clause.riskScore}</span>}
                         </button>
-                      </div>
-                      <div className="p-4 bg-risk-low/5 border border-risk-low/10 rounded-lg font-sans text-sm text-text-secondary leading-relaxed">
-                        <div className="text-xs font-mono text-text-muted mb-2">PROPOSED AMENDMENT:</div>
-                        <div className="text-risk-low border-l-2 border-risk-low/30 pl-3 italic">
-                          {selectedClause.suggestedRedline}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Check className="w-4 h-4 text-accent-cyan" />
-                      <span className="text-[10px] font-mono text-text-primary uppercase tracking-widest">
-                        What To Do Next
-                      </span>
-                    </div>
-                    <div className="p-4 bg-accent-cyan/5 border border-accent-cyan/10 rounded-lg font-sans text-sm text-text-secondary leading-relaxed">
-                      {NEXT_STEPS[selectedClause.riskLevel]}
-                      <span className="block mt-2 text-[10px] font-mono text-text-muted">
-                        General guidance for this risk level — not legal advice.
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Quick Chat CTA */}
-                  <button
-                    onClick={() => setActiveTab('chat')}
-                    className="w-full mt-2 py-3 rounded-lg border border-accent-cyan/20 bg-accent-cyan/3 hover:bg-accent-cyan/8 hover:border-accent-cyan/40 text-accent-cyan text-xs font-mono font-bold uppercase tracking-wider precise-transition flex items-center justify-center gap-2"
-                  >
-                    <MessageSquareCode className="w-3.5 h-3.5" />
-                    Ask AI about this clause
-                  </button>
-                </div>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
+            </div>
+            <p className="clause-keys text-xs text-text-muted">
+              <kbd className="kbd">Up</kbd> <kbd className="kbd">Down</kbd> move
+              <span className="mx-2" aria-hidden="true">·</span><kbd className="kbd">/</kbd> search
+              <span className="mx-2" aria-hidden="true">·</span><kbd className="kbd">Esc</kbd> clear search
+            </p>
+            {(selectedClause || compareClauses.length === 2) && <a href="#clause-reading" className="review-jump text-link text-sm">Go to {tab === 'compare' ? 'comparison' : 'clause detail'} <ArrowRight size={15} aria-hidden="true" /></a>}
+          </section>
 
-              {/* Compare Tab — two clauses side by side */}
-              {activeTab === 'compare' && compareClauses.length === 2 && (
-                <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-5 break-words">
-                  <div className="flex flex-wrap gap-3 justify-between items-start border-b border-overlay/5 pb-4">
-                    <div>
-                      <span className="font-mono text-xs text-accent-cyan uppercase tracking-widest block mb-1">
-                        Clause Comparison
-                      </span>
-                      <h3 className="text-lg font-mono font-bold text-text-primary">
-                        {compareClauses[0].number || compareClauses[0].title} vs{' '}
-                        {compareClauses[1].number || compareClauses[1].title}
-                      </h3>
-                    </div>
-                    <button
-                      onClick={exitCompareMode}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-overlay/10 hover:border-overlay/20 text-text-muted hover:text-text-primary text-[11px] font-mono font-bold uppercase tracking-wider precise-transition"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                      Clear
-                    </button>
-                  </div>
-                  {compareSummary && (
-                    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-accent-cyan/15 bg-accent-cyan/5 px-4 py-3">
-                      <Badge tone={getRiskTone(compareClauses[0].riskLevel)}>{compareClauses[0].riskLevel}</Badge>
-                      <span className="text-xs font-mono text-text-muted">vs</span>
-                      <Badge tone={getRiskTone(compareClauses[1].riskLevel)}>{compareClauses[1].riskLevel}</Badge>
-                      <p className="text-xs font-sans text-text-secondary leading-relaxed">{compareSummary}</p>
-                    </div>
-                  )}
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    {compareClauses.map((clause) => (
-                      <article key={clause.id} className={cn('rounded-lg border border-overlay/10 p-4 space-y-3', getRiskBorder(clause.riskLevel))}>
-                        <div className="flex justify-between items-start gap-3">
-                          <h4 className="font-mono text-xs font-bold text-text-primary">
-                            {clause.number ? `${clause.number}: ` : ''}{clause.title}
-                          </h4>
-                          <Badge tone={getRiskTone(clause.riskLevel)}>{clause.riskLevel}</Badge>
-                        </div>
-                        <p className="text-xs text-text-secondary font-sans leading-relaxed">{clause.text}</p>
-                        {clause.matchedTerms && clause.matchedTerms.length > 0 && (
-                          <p className="font-mono text-[10px] leading-relaxed">
-                            <span className="text-text-muted uppercase tracking-wider">Matched: </span>
-                            <span className={getRiskText(clause.riskLevel)}>
-                              {formatMatchedTerms(clause.matchedTerms)}
-                            </span>
-                          </p>
-                        )}
-                        <div>
-                          <span className="text-[10px] font-mono text-text-secondary uppercase tracking-widest block mb-1">
-                            Risk Explanation
-                          </span>
-                          <p className="text-xs text-text-secondary font-sans leading-relaxed">{clause.riskExplanation}</p>
-                        </div>
-                        {clause.suggestedRedline && (
-                          <div>
-                            <span className="text-[10px] font-mono text-text-secondary uppercase tracking-widest block mb-1">
-                              Suggested Revision
-                            </span>
-                            <p className="text-xs text-risk-low font-sans leading-relaxed border-l-2 border-risk-low/30 pl-3 italic">
-                              {clause.suggestedRedline}
-                            </p>
-                          </div>
-                        )}
-                        <p className="text-xs text-text-secondary font-sans leading-relaxed">
-                          <span className="text-[10px] font-mono text-text-secondary uppercase tracking-widest block mb-1">
-                            What To Do Next
-                          </span>
-                          {NEXT_STEPS[clause.riskLevel]}
-                        </p>
-                      </article>
-                    ))}
-                  </div>
+          <section className="review-pane" id="clause-reading" tabIndex={-1} aria-label="Clause review">
+            {selectedClause || compareClauses.length === 2 ? (
+              <>
+                <div className="review-tabs" role="group" aria-label="Review view">
+                  {selectedClause && <button type="button" aria-pressed={tab === 'analysis'} onClick={() => setActiveTab('analysis')}><FileText size={16} aria-hidden="true" /> Analysis</button>}
+                  {selectedClause && <button type="button" aria-pressed={tab === 'chat'} onClick={() => setActiveTab('chat')}><MessageSquare size={16} aria-hidden="true" /> Chat{chatMessages.length > 0 && <span className="font-mono text-xs text-text-muted">{chatMessages.length}</span>}</button>}
+                  {compareClauses.length === 2 && <button type="button" aria-pressed={tab === 'compare'} onClick={() => setActiveTab('compare')}><GitCompare size={16} aria-hidden="true" /> Comparison</button>}
                 </div>
-              )}
 
-              {/* Chat Tab — full height */}
-              {activeTab === 'chat' && selectedClause && (
-                <div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
-                  {/* Chat context pill */}
-                  <div className="px-4 py-2 flex-shrink-0 border-b border-overlay/5 bg-background-base/20">
-                    <div className="flex items-center gap-2 text-[10px] font-mono text-text-muted">
-                      <span className="text-text-secondary font-bold">Context:</span>
-                      <span className="text-text-secondary font-bold truncate">
-                        {selectedClause.number ? `${selectedClause.number} · ` : ''}{selectedClause.title}
-                      </span>
-                      {isChatGenerating && (
-                        <span className="ml-auto flex items-center gap-1 text-risk-medium">
-                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-risk-medium animate-bounce" style={{animationDelay:'0ms'}} />
-                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-risk-medium animate-bounce" style={{animationDelay:'150ms'}} />
-                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-risk-medium animate-bounce" style={{animationDelay:'300ms'}} />
-                          Thinking...
-                        </span>
+                {tab === 'analysis' && selectedClause && (
+                  <article className="review-content">
+                    <header className="review-reading-title">
+                      <div className="min-w-0">
+                        <p className="eyebrow">{selectedClause.number || 'Clause'}</p>
+                        <h2 className="section-title mt-2 break-words">{selectedClause.title}</h2>
+                      </div>
+                      <div className="review-score">
+                        <Badge tone={selectedClause.riskLevel} className="capitalize">{selectedClause.riskLevel} risk</Badge>
+                        {typeof selectedClause.riskScore === 'number' && <p className="text-sm text-text-secondary tnum"><strong className="text-xl text-text-primary">{selectedClause.riskScore}</strong> / 100</p>}
+                      </div>
+                    </header>
+                    <section className="review-reading-section source-section">
+                      <h3>Original clause</h3>
+                      <SourceText clause={selectedClause} />
+                    </section>
+                    <section className="review-reading-section">
+                      <h3>Why it was flagged</h3>
+                      <p className="reading text-text-secondary">{selectedClause.riskExplanation || 'No explanation is available for this finding.'}</p>
+                    </section>
+                    {selectedClause.suggestedRedline && (
+                      <section className="review-reading-section">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <h3>Suggested revision</h3>
+                          <Button variant="outline" size="sm" onClick={() => void handleCopy(`redline-${selectedClause.id}`, selectedClause.suggestedRedline!)} aria-label="Copy suggested revision">
+                            {copiedId === `redline-${selectedClause.id}` ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />}
+                            <span aria-live="polite">{copiedId === `redline-${selectedClause.id}` ? 'Copied' : 'Copy'}</span>
+                          </Button>
+                        </div>
+                        <p className="reading text-text-secondary">{selectedClause.suggestedRedline}</p>
+                      </section>
+                    )}
+                    <section className="review-reading-section">
+                      <h3>Next step</h3>
+                      <p className="reading text-text-secondary">{nextSteps[selectedClause.riskLevel]}</p>
+                      <p className="text-sm text-text-muted">General guidance. Have a legal reviewer check the agreement.</p>
+                    </section>
+                    <Button variant="outline" onClick={() => setActiveTab('chat')}><MessageSquare size={16} aria-hidden="true" /> Ask about this clause</Button>
+                  </article>
+                )}
+
+                {tab === 'compare' && compareClauses.length === 2 && (
+                  <div className="review-content">
+                    <header className="review-reading-title">
+                      <div>
+                        <h2 className="section-title">Compare clauses</h2>
+                        <p className="reading mt-2 text-text-secondary">{compareSummary}</p>
+                      </div>
+                      <Button variant="outline" size="sm" onClick={exitCompareMode}>Clear comparison</Button>
+                    </header>
+                    <div className="comparison-grid">
+                      {compareClauses.map((clause) => (
+                        <article key={clause.id} className="comparison-column">
+                          <header className="grid gap-2">
+                            <p className="eyebrow">{clause.number || 'Clause'}</p>
+                            <h3 className="text-xl font-semibold tracking-tight">{clause.title}</h3>
+                            <Badge tone={clause.riskLevel} className="capitalize">{clause.riskLevel} risk{typeof clause.riskScore === 'number' ? ` · ${clause.riskScore} / 100` : ''}</Badge>
+                          </header>
+                          <SourceText clause={clause} />
+                          <section className="review-reading-section"><h4>Why it was flagged</h4><p className="reading text-text-secondary">{clause.riskExplanation || 'No explanation is available.'}</p></section>
+                          {clause.suggestedRedline && <section className="review-reading-section"><h4>Suggested revision</h4><p className="reading text-text-secondary">{clause.suggestedRedline}</p></section>}
+                          <section className="review-reading-section"><h4>Next step</h4><p className="reading text-text-secondary">{nextSteps[clause.riskLevel]}</p></section>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {tab === 'chat' && selectedClause && (
+                  <div className="review-content">
+                    <header className="review-reading-title">
+                      <div>
+                        <h2 className="section-title">Ask the contract</h2>
+                        <p className="reading mt-2 text-text-secondary">Selected clause · {selectedClause.number ? `${selectedClause.number}, ` : ''}{selectedClause.title}</p>
+                      </div>
+                      <Badge tone={wsConnected ? 'success' : 'warning'}>{wsConnected ? 'Connected' : 'Offline'}</Badge>
+                    </header>
+                    <div ref={chatLogRef} className="chat-transcript" role="log" aria-label="Contract chat" tabIndex={0}>
+                      {chatMessages.length === 0 && (
+                        <p className="margin-note reading text-text-secondary">Ask about obligations, deadlines or specific wording. Check each answer against the agreement.</p>
                       )}
-                    </div>
-                  </div>
-
-                  {/* Messages scroll area — takes all available height */}
-                  <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 break-words">
-                    {/* Welcome bubble */}
-                    <div className="flex items-start gap-2.5">
-                      <div className="w-6 h-6 rounded-full bg-accent-cyan/10 border border-accent-cyan/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <Bot className="w-3.5 h-3.5 text-accent-cyan" />
-                      </div>
-                      <div className="bg-overlay/3 border border-overlay/8 px-3.5 py-2.5 rounded-2xl rounded-tl-sm text-sm font-sans text-text-secondary leading-relaxed flex-1 max-w-[90%]">
-                        <span className="block text-[10px] font-mono text-accent-cyan mb-1 uppercase tracking-wider">AuditMind</span>
-                        Ask me anything about this contract — clause obligations, risk implications, breach scenarios, or deadline triggers.
-                      </div>
-                    </div>
-
-                    {chatMessages.map((msg) => {
-                      const isIncomplete = msg.message.startsWith(INCOMPLETE_ANSWER);
-                      const isUser = msg.sender === 'user';
-                      return (
-                        <div key={msg.id} className={`flex items-end gap-2.5 ${isUser ? 'flex-row-reverse' : ''}`}>
-                          {!isUser && (
-                            <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 border ${
-                              isIncomplete
-                                ? 'bg-risk-medium/15 border-risk-medium/30'
-                                : 'bg-accent-cyan/10 border-accent-cyan/20'
-                            }`}>
-                              <Bot className={`w-3.5 h-3.5 ${isIncomplete ? 'text-risk-medium' : 'text-accent-cyan'}`} />
-                            </div>
-                          )}
-                          <div className={`relative group max-w-[80%] px-3.5 py-2.5 rounded-2xl text-sm font-sans leading-relaxed border ${
-                            isUser
-                              ? 'bg-accent-cyan/10 border-accent-cyan/20 rounded-br-sm text-text-primary'
-                              : isIncomplete
-                              ? 'bg-amber-500/5 border-amber-500/20 rounded-bl-sm text-amber-700 dark:text-amber-200'
-                              : 'bg-overlay/3 border-overlay/8 rounded-bl-sm text-text-secondary'
-                          }`}>
-                            {!isUser && (
-                              <span className={`block text-[9px] font-mono mb-1.5 uppercase tracking-wider ${
-                                isIncomplete ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-text-muted'
-                              }`}>
-                                {isIncomplete ? 'Incomplete response' : 'AuditMind'}
-                              </span>
-                            )}
-                            <div className="whitespace-pre-line select-text break-words">{msg.message}</div>
-                            {/* Hover copy button */}
-                            <button
-                              onClick={() => handleCopy(msg.id, msg.message)}
-                              aria-label="Copy message"
-                              className="absolute -top-2 right-2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 bg-background-panel border border-overlay/10 p-1 rounded-md text-text-muted hover:text-text-primary precise-transition shadow-lg"
-                              title="Copy"
-                            >
-                              {copiedId === msg.id
-                                ? <CheckCheck className="w-3 h-3 text-risk-low" />
-                                : <Copy className="w-3 h-3" />}
+                      {chatMessages.filter((message) => message.message).map((message) => (
+                        <article key={message.id} className="chat-message" data-sender={message.sender}>
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="eyebrow">{message.sender === 'user' ? 'You' : message.message.startsWith(INCOMPLETE_ANSWER) ? 'Incomplete response' : 'AuditMind'}</p>
+                            <button type="button" className="icon-control size-10" aria-label="Copy message" onClick={() => void handleCopy(message.id, message.message)}>
+                              {copiedId === message.id ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />}
                             </button>
                           </div>
-                        </div>
-                      );
-                    })}
-
-                    {/* Typing indicator — only show when empty placeholder message is streaming */}
-                    {isChatGenerating && chatMessages[chatMessages.length - 1]?.message === '' && (
-                      <div className="flex items-end gap-2.5">
-                        <div className="w-6 h-6 rounded-full bg-accent-cyan/10 border border-accent-cyan/20 flex items-center justify-center flex-shrink-0">
-                          <Bot className="w-3.5 h-3.5 text-accent-cyan" />
-                        </div>
-                        <div className="bg-overlay/3 border border-overlay/8 px-4 py-3 rounded-2xl rounded-bl-sm flex items-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full bg-accent-cyan/60 animate-bounce" style={{animationDelay:'0ms'}} />
-                          <span className="w-2 h-2 rounded-full bg-accent-cyan/60 animate-bounce" style={{animationDelay:'160ms'}} />
-                          <span className="w-2 h-2 rounded-full bg-accent-cyan/60 animate-bounce" style={{animationDelay:'320ms'}} />
-                        </div>
+                          <p className="reading whitespace-pre-wrap text-text-secondary">{message.message}</p>
+                        </article>
+                      ))}
+                    </div>
+                    <div>
+                      <form className="flex gap-2" onSubmit={handleSendChat}>
+                        <input className="field min-w-0 flex-1" type="text" aria-label="Ask a question about this contract"
+                          placeholder="Ask a question about the contract" value={chatInput} onChange={(event) => setChatInput(event.target.value)}
+                          readOnly={isChatGenerating} />
+                        <Button type="submit" size="icon" aria-label="Send message" disabled={isChatGenerating || !wsConnected || !chatInput.trim()}><Send size={17} aria-hidden="true" /></Button>
+                      </form>
+                      <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-text-muted">
+                        <span role="status">{isChatGenerating ? 'Preparing an answer…' : wsConnected ? 'Check AI answers against the contract.' : 'Chat is offline.'}</span>
+                        {!wsConnected && <Button variant="outline" size="sm" onClick={() => setWsEpoch((value) => value + 1)}>Reconnect</Button>}
                       </div>
-                    )}
-                    <div ref={chatEndRef} />
-                  </div>
-
-                  {/* Input bar */}
-                  <div className="flex-shrink-0 border-t border-overlay/5 bg-background-panel/60 p-4">
-                    <form onSubmit={handleSendChat} className="flex gap-2.5 items-center">
-                      <input
-                        type="text"
-                        value={chatInput}
-                        onChange={(e) => setChatInput(e.target.value)}
-                        placeholder={isChatGenerating ? 'AuditMind is thinking...' : "Ask a question about this contract..."}
-                        aria-label="Ask a question about this contract"
-                        disabled={isChatGenerating}
-                        className="min-w-0 flex-1 bg-background-base border border-overlay/10 outline-none rounded-xl py-3 px-4 text-sm font-sans text-text-primary placeholder:text-text-muted/50 focus:border-accent-cyan/50 focus:ring-1 focus:ring-accent-cyan/20 precise-transition disabled:opacity-50"
-                      />
-                      <button
-                        type="submit"
-                        disabled={isChatGenerating || !wsConnected}
-                        aria-label="Send message"
-                        className="w-10 h-10 bg-accent-cyan/15 hover:bg-accent-cyan/25 border border-accent-cyan/30 hover:border-accent-cyan text-accent-cyan rounded-xl precise-transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center flex-shrink-0"
-                        title="Send"
-                      >
-                        <Send className="w-4 h-4" />
-                      </button>
-                    </form>
-                    <div className="mt-2 flex items-center justify-center gap-2 text-[10px] text-text-muted/40 font-mono">
-                      <span>{wsConnected ? 'Connected · AI output needs legal review' : 'Offline · chat is paused'}</span>
-                      {!wsConnected && (
-                        <button
-                          type="button"
-                          onClick={() => setWsEpoch((v) => v + 1)}
-                          className="text-accent-cyan hover:text-text-primary underline underline-offset-2 precise-transition"
-                        >
-                          Reconnect
-                        </button>
-                      )}
                     </div>
                   </div>
-                </div>
-              )}
-
-            </div>
-          ) : (
-            <EmptyState
-              icon={<FileText className="w-6 h-6 text-text-muted/50" />}
-              title="No Clause Selected"
-              description="Click any clause on the left panel to view its risk analysis, suggested revisions, and ask AI questions."
-              className="flex-grow"
-            />
-          )}
+                )}
+              </>
+            ) : (
+              <EmptyState title={clausesLoading ? 'Opening the review' : 'Select a clause'}
+                description={clausesLoading ? 'The document and findings will appear here.' : 'Open a clause to see its wording, risk explanation and any suggested revision.'} />
+            )}
+          </section>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

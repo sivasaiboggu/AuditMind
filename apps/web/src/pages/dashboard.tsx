@@ -6,14 +6,13 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useContractStore } from '../store/contractStore';
 import { useAuth } from '../lib/auth-context';
-import { useTheme } from '../lib/theme';
 import { useToast } from '../hooks/useToast';
 import { Navbar } from '../components/Navbar';
 import { ToastViewport } from '../components/ToastViewport';
-import { Badge, Button, Card, CardTitle, EmptyState, Skeleton, Spinner } from '../components/ui';
+import { Badge, Button, EmptyState, Skeleton, Spinner } from '../components/ui';
 import { supabase } from '../lib/supabase';
-import { Upload, AlertTriangle, Clock, FileCheck, CheckCircle2, ChevronRight, BarChart3, TrendingUp, Trash2, Search, X, RefreshCw, FileText } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
+import { ArrowUpRight, Plus, Trash2, Search, X, RefreshCw, FileText } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import type { Contract } from '@auditmind/shared-types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -22,15 +21,14 @@ type StatusFilter = 'all' | 'completed' | 'processing' | 'failed' | 'queued';
 type RiskFilter = 'all' | 'critical' | 'high' | 'medium' | 'low';
 type SortBy = 'date-desc' | 'date-asc' | 'risk-desc' | 'risk-asc' | 'name-asc';
 
-// The contract list renders without an entrance animation: rows appear
-// when the data arrives, and delaying them would only slow reading.
-const selectClassName =
-  'rounded-lg border border-overlay/10 bg-background-panel px-3 py-2.5 text-xs font-mono text-text-secondary outline-none focus:border-accent-cyan/50 precise-transition';
-
+const statuses = [['all', 'All statuses'], ['completed', 'Analyzed'], ['processing', 'Analyzing'], ['failed', 'Failed'], ['queued', 'Queued']] as const;
+const riskLevels = ['Critical', 'High', 'Medium', 'Low'] as const;
+const sortOptions = [['date-desc', 'Newest first'], ['date-asc', 'Oldest first'], ['risk-desc', 'Highest risk'], ['risk-asc', 'Lowest risk'], ['name-asc', 'Name A–Z']] as const;
+const riskColors = { critical: 'text-risk-critical', high: 'text-risk-high', medium: 'text-risk-medium', low: 'text-risk-low' } as const;
+const dateFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const { theme } = useTheme();
   const { contracts, setContracts, setActiveContract } = useContractStore();
   const [notification, setNotification] = useState<string | null>(null);
   const { toasts, addToast, removeToast } = useToast();
@@ -38,7 +36,8 @@ export default function Dashboard() {
   const [refreshVersion, setRefreshVersion] = useState(0);
 
   // First-load state: distinguishes "no contracts yet" from "still fetching".
-  const [hasLoaded, setHasLoaded] = useState(false);
+  const [loadStatus, setHasLoaded] = useState<'loading' | 'ready' | 'error'>('loading');
+  const hasLoaded = loadStatus !== 'loading';
 
   // Client-side list controls.
   const [query, setQuery] = useState('');
@@ -68,12 +67,11 @@ export default function Dashboard() {
         const data = await response.json();
         if (current() && read === listRead.current) {
           setContracts(data);
-          setHasLoaded(true);
+          setHasLoaded('ready');
         }
       } catch {
         if (current() && read === listRead.current) {
-          setNotification('Contract list could not be refreshed. Try again.');
-          setHasLoaded(true);
+          setHasLoaded('error');
         }
       }
     };
@@ -85,8 +83,8 @@ export default function Dashboard() {
         void fetchContracts();
         const doc = payload.new as any;
         if (doc?.user_id !== user?.id) return;
-        if (payload.eventType === 'INSERT') setNotification(`New contract analysis scheduled: ${doc.name}`);
-        else if (payload.eventType === 'UPDATE' && doc.status === 'completed') setNotification(`Analysis complete! ${doc.name} is ready.`);
+        if (payload.eventType === 'INSERT') setNotification(`Queued for analysis: ${doc.name}`);
+        else if (payload.eventType === 'UPDATE' && doc.status === 'completed') setNotification(`${doc.name} is ready to review.`);
         else if (payload.eventType === 'UPDATE' && doc.status === 'failed') setNotification(`Analysis failed for ${doc.name}. Check the contract status.`);
       }).subscribe();
     return () => {
@@ -116,20 +114,6 @@ export default function Dashboard() {
   const trendData = useMemo(() => buildTrendData(contracts), [contracts]);
 
   const riskCounts = useMemo(() => countByRiskBucket(contracts), [contracts]);
-  const distributionData = [
-    { name: 'Critical', count: riskCounts.critical, color: '#EF4444' },
-    { name: 'High', count: riskCounts.high, color: '#F97316' },
-    { name: 'Medium', count: riskCounts.medium, color: '#EAB308' },
-    { name: 'Low', count: riskCounts.low, color: '#10B981' },
-  ];
-
-  // Chart colours adapt to the active theme (cyan line is unreadable on white).
-  const chartLine = theme === 'dark' ? '#2DD4BF' : '#0F766E';
-  const tooltipBg = theme === 'dark' ? '#0F121D' : '#FFFFFF';
-  const tooltipBorder = theme === 'dark'
-    ? '1px solid rgba(255,255,255,0.08)'
-    : '1px solid rgba(15,23,42,0.12)';
-
   // Client-side search / filter / sort (kept below the stats block so the
   // workspace-client test harness can evaluate the fetch effect in isolation).
   const filteredContracts = useMemo(() => {
@@ -165,17 +149,6 @@ export default function Dashboard() {
     setStatusFilter('all');
     setRiskFilter('all');
     setSortBy('date-desc');
-  };
-
-  // One bucket function for the score chip, so the 75/50/25 thresholds
-  // live in exactly one place (riskBucket) and cannot drift apart again.
-  const getRiskColor = (score: number) => {
-    switch (riskBucket(score)) {
-      case 'critical': return 'text-risk-critical border-risk-critical/20 bg-risk-critical/5';
-      case 'high': return 'text-risk-high border-risk-high/20 bg-risk-high/5';
-      case 'medium': return 'text-risk-medium border-risk-medium/20 bg-risk-medium/5';
-      default: return 'text-risk-low border-risk-low/20 bg-risk-low/5';
-    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -235,423 +208,193 @@ export default function Dashboard() {
     navigate('/');
   };
 
+  const demo = !supabase;
+
   return (
-    <div className="min-h-screen bg-background-base flex flex-col">
-      <Navbar currentView="dashboard" setView={(v) => navigate(v === 'dashboard' ? '/dashboard' : useContractStore.getState().activeContract ? `/contract/${useContractStore.getState().activeContract!.id}` : '/upload')} onLogout={handleLogout} />
-
-      <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-8 w-full">
-        {/* Real-time Notifications */}
-        {notification && (
-          <div className="bg-accent-cyan/10 border border-accent-cyan/20 p-3.5 rounded-lg text-xs font-mono text-accent-cyan flex items-center justify-between shadow-card">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-accent-cyan"></span>
-              <span>{notification}</span>
-            </div>
-            <button onClick={() => setNotification(null)} aria-label="Dismiss notification" className="text-[10px] hover:text-text-primary uppercase tracking-wider font-bold">Dismiss</button>
-          </div>
-        )}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div className="min-h-screen">
+      <Navbar onLogout={handleLogout} />
+      <main id="main-content" tabIndex={-1} className="frame wide-frame page-stack">
+        <header className="workspace-title">
           <div>
-            <h1 className="text-3xl font-sans font-semibold tracking-tight text-text-primary">
-              Dashboard
-            </h1>
-            <p className="text-text-secondary text-sm font-sans mt-1">
-              Overview of contract compliance analysis.
-            </p>
+            <p className="eyebrow mb-3">Review desk</p>
+            <h1 className="page-title">Contracts</h1>
+            <p className="lede mt-3">Check the status of an upload or open a contract to review its clauses.</p>
           </div>
-        </div>
+          <Link to="/upload" className="action action-primary"><Plus size={18} aria-hidden="true" /> Upload contract</Link>
+        </header>
 
-        {!hasLoaded ? (
-          <>
-            {/* Loading skeletons */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" aria-busy="true" aria-label="Loading dashboard">
-              <Skeleton className="h-[200px] w-full" />
-              <div className="grid grid-cols-2 gap-4">
-                <Skeleton className="h-[92px] w-full" />
-                <Skeleton className="h-[92px] w-full" />
-                <Skeleton className="h-[92px] w-full" />
-                <Skeleton className="h-[92px] w-full" />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Skeleton className="h-[248px] w-full" />
-              <Skeleton className="h-[248px] w-full" />
-            </div>
-            <Card className="overflow-hidden">
-              <div className="border-b border-overlay/5 px-6 py-4">
-                <Skeleton className="h-4 w-24" />
-              </div>
-              <div className="space-y-0">
-                {[0, 1, 2].map((i) => (
-                  <div key={i} className="flex items-center justify-between gap-4 border-b border-overlay/5 p-6 last:border-b-0">
-                    <div className="flex-1 space-y-2">
-                      <Skeleton className="h-4 w-1/2" />
-                      <Skeleton className="h-3 w-1/3" />
-                    </div>
-                    <Skeleton className="h-8 w-8 rounded-full" />
-                  </div>
-                ))}
-              </div>
-            </Card>
-          </>
-        ) : (
-          <>
-            {/* Upload Action Card & Quick Stats */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2">
-                <Link
-                  to="/upload"
-                  className="h-full min-h-[200px] rounded-xl border border-dashed border-overlay/10 hover:border-accent-cyan bg-background-panel/30 hover:bg-accent-cyan/5 shadow-card flex flex-col items-center justify-center p-6 text-center precise-transition group cursor-pointer"
-                >
-                  <div className="w-12 h-12 rounded bg-overlay/5 border border-overlay/10 text-text-secondary group-hover:text-accent-cyan group-hover:border-accent-cyan/40 flex items-center justify-center precise-transition shadow-lg mb-3">
-                    <Upload className="w-5 h-5 precise-transition" />
-                  </div>
-                  <p className="font-sans text-sm font-medium text-text-primary group-hover:text-accent-cyan precise-transition">
-                    Upload new contract
-                  </p>
-                  <p className="text-xs text-text-secondary font-sans mt-1">
-                    Select a PDF or DOCX file to analyze.
-                  </p>
-                </Link>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <Card className="p-5 flex flex-col justify-between">
-                  <div className="flex items-center justify-between text-text-muted">
-                    <FileCheck className="w-4 h-4 text-accent-cyan" />
-                    <span className="text-[10px] font-sans uppercase tracking-wider">Total</span>
-                  </div>
-                  <div className="mt-4">
-                    <div className="text-3xl font-sans font-bold text-text-primary tnum">
-                      {contracts.length}
-                    </div>
-                    <p className="text-[10px] font-sans text-text-secondary mt-1 uppercase">{completedContracts.length} analysed</p>
-                  </div>
-                </Card>
-
-                <Card className="p-5 flex flex-col justify-between">
-                  <div className="flex items-center justify-between text-text-muted">
-                    <AlertTriangle className="w-4 h-4 text-risk-high" />
-                    <span className="text-[10px] font-sans uppercase tracking-wider">High Risk</span>
-                  </div>
-                  <div className="mt-4">
-                    <div className="text-3xl font-sans font-bold text-risk-critical tnum">
-                      {highRiskContracts}
-                    </div>
-                    <p className="text-[10px] font-sans text-text-secondary mt-1 uppercase">of {completedContracts.length} analysed</p>
-                  </div>
-                </Card>
-
-                <Card className="p-5 flex flex-col justify-between">
-                  <div className="flex items-center justify-between text-text-muted">
-                    <Clock className="w-4 h-4 text-risk-medium" />
-                    <span className="text-[10px] font-sans uppercase tracking-wider">Processing</span>
-                  </div>
-                  <div className="mt-4">
-                    <div className="text-3xl font-sans font-bold text-text-primary tnum">
-                      {contracts.filter(c => c.status === 'processing').length}
-                    </div>
-                    <p className="text-[10px] font-sans text-text-secondary mt-1 uppercase">in progress now</p>
-                  </div>
-                </Card>
-
-                <Card className="p-5 flex flex-col justify-between">
-                  <div className="flex items-center justify-between text-text-muted">
-                    <CheckCircle2 className="w-4 h-4 text-risk-low" />
-                    <span className="text-[10px] font-sans uppercase tracking-wider">Average Risk</span>
-                  </div>
-                  <div className="mt-4">
-                    <div className="text-3xl font-sans font-bold text-text-primary tnum">
-                      {avgRiskScore}%
-                    </div>
-                    <p className="text-[10px] font-sans text-text-secondary mt-1 uppercase">across {completedContracts.length} analysed</p>
-                  </div>
-                </Card>
-              </div>
-            </div>
-
-            {/* Charts */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card className="p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <TrendingUp className="w-4 h-4 text-accent-cyan" />
-                  <CardTitle>
-                    Risk Score Trend
-                  </CardTitle>
-                </div>
-                {completedContracts.length === 0 && (
-                  <p className="text-xs text-text-muted font-sans -mt-2 mb-4">
-                    No completed analyses yet — the trend appears once a contract finishes. Months with no completions stay blank, not zero.
-                  </p>
-                )}
-                <div className="h-[200px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                      <defs>
-                        <linearGradient id="colorRisk" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor={chartLine} stopOpacity={0.2} />
-                          <stop offset="95%" stopColor={chartLine} stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <XAxis dataKey="name" stroke="#64748B" fontSize={10} fontFamily="IBM Plex Mono" tickLine={false} />
-                      <YAxis stroke="#64748B" fontSize={10} fontFamily="IBM Plex Mono" tickLine={false} />
-                      <Tooltip
-                        contentStyle={{ background: tooltipBg, border: tooltipBorder, borderRadius: '4px' }}
-                        labelClassName="font-mono text-xs text-text-secondary"
-                        itemStyle={{ fontFamily: 'IBM Plex Mono', fontSize: '12px' }}
-                      />
-                      <Area type="monotone" dataKey="avgRisk" stroke={chartLine} strokeWidth={1.5} fillOpacity={1} fill="url(#colorRisk)" connectNulls={false} isAnimationActive={false} dot={{ r: 3, fill: chartLine, strokeWidth: 0 }} activeDot={{ r: 4, fill: chartLine, strokeWidth: 0 }} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </Card>
-
-              <Card className="p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <BarChart3 className="w-4 h-4 text-accent-cyan" />
-                  <CardTitle>
-                    Risk Level Distribution
-                  </CardTitle>
-                </div>
-                {completedContracts.length === 0 && (
-                  <p className="text-xs text-text-muted font-sans -mt-2 mb-4">
-                    No completed analyses yet — the distribution fills in once a contract finishes.
-                  </p>
-                )}
-                <div className="h-[200px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={distributionData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                      <XAxis dataKey="name" stroke="#64748B" fontSize={10} fontFamily="IBM Plex Mono" tickLine={false} />
-                      <YAxis stroke="#64748B" fontSize={10} fontFamily="IBM Plex Mono" tickLine={false} />
-                      <Tooltip
-                        contentStyle={{ background: tooltipBg, border: tooltipBorder, borderRadius: '4px' }}
-                        cursor={{ fill: 'rgba(128,128,128,0.06)' }}
-                      />
-                      <Bar dataKey="count" radius={[2, 2, 0, 0]} isAnimationActive={false}>
-                        {distributionData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </Card>
-            </div>
-
-            {/* Contract List */}
-            <Card className="overflow-hidden">
-              <div className="border-b border-overlay/5 px-4 sm:px-6 py-4 flex flex-wrap justify-between items-center gap-3 bg-overlay/2">
-                <h2 className="font-mono text-sm font-bold uppercase tracking-wider text-text-primary">
-                  Contracts
-                </h2>
-                <div className="flex items-center gap-3">
-                  <span className="font-mono text-xs text-text-secondary">
-                    [{filteredContracts.length}{filtersActive ? ` of ${contracts.length}` : ''} loaded]
-                  </span>
-                  <Button variant="outline" size="sm" onClick={handleRefresh} aria-label="Refresh contracts">
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    Refresh
-                  </Button>
-                </div>
-              </div>
-
-              {/* Search / filter / sort toolbar */}
-              <div className="border-b border-overlay/5 px-4 sm:px-6 py-4 flex flex-col gap-3 lg:flex-row lg:items-center">
-                <div className="relative flex-1">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
-                  <input
-                    type="search"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Search contracts by name…"
-                    aria-label="Search contracts by name"
-                    className="w-full rounded border border-overlay/10 bg-background-panel py-2.5 pl-9 pr-9 text-sm text-text-primary placeholder:text-text-muted/60 outline-none focus:border-accent-cyan/50 focus:ring-1 focus:ring-accent-cyan/20 precise-transition"
-                  />
-                  {query && (
-                    <button
-                      onClick={() => setQuery('')}
-                      aria-label="Clear search"
-                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-text-muted hover:text-text-primary"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-                    aria-label="Filter by status"
-                    className={selectClassName}
-                  >
-                    <option value="all">All statuses</option>
-                    <option value="completed">Analyzed</option>
-                    <option value="processing">Analyzing</option>
-                    <option value="failed">Failed</option>
-                    <option value="queued">Queued</option>
-                  </select>
-                  <select
-                    value={riskFilter}
-                    onChange={(e) => setRiskFilter(e.target.value as RiskFilter)}
-                    aria-label="Filter by risk level"
-                    className={selectClassName}
-                  >
-                    <option value="all">All risk levels</option>
-                    <option value="critical">Critical</option>
-                    <option value="high">High</option>
-                    <option value="medium">Medium</option>
-                    <option value="low">Low</option>
-                  </select>
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value as SortBy)}
-                    aria-label="Sort contracts"
-                    className={selectClassName}
-                  >
-                    <option value="date-desc">Newest first</option>
-                    <option value="date-asc">Oldest first</option>
-                    <option value="risk-desc">Highest risk</option>
-                    <option value="risk-asc">Lowest risk</option>
-                    <option value="name-asc">Name A–Z</option>
-                  </select>
-                  {filtersActive && (
-                    <Button variant="ghost" size="sm" onClick={clearFilters}>
-                      Clear filters
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              {contracts.length === 0 ? (
-                <EmptyState
-                  icon={<FileText className="w-5 h-5" />}
-                  title="No contracts yet"
-                  description="Upload a contract file to start your first AI risk analysis."
-                  action={
-                    <Link to="/upload">
-                      <Button size="sm">
-                        <Upload className="w-3.5 h-3.5" />
-                        Upload contract
-                      </Button>
-                    </Link>
-                  }
-                />
-              ) : filteredContracts.length === 0 ? (
-                <EmptyState
-                  icon={<Search className="w-5 h-5" />}
-                  title="No contracts match your filters"
-                  description="Try a different search term or clear the active filters."
-                  action={
-                    <Button variant="outline" size="sm" onClick={clearFilters}>
-                      Clear filters
-                    </Button>
-                  }
-                />
-              ) : (
-                <div className="divide-y divide-overlay/5">
-                  {filteredContracts.map((contract) => (
-                    <div
-                      key={contract.id}
-                      onClick={() => {
-                        if (confirmingDeleteId) return;
-                        if (contract.status === 'completed') handleSelectContract(contract);
-                      }}
-                      onKeyDown={(e) => {
-                        if (confirmingDeleteId) return;
-                        if ((e.key === 'Enter' || e.key === ' ') && contract.status === 'completed') {
-                          e.preventDefault();
-                          handleSelectContract(contract);
-                        }
-                      }}
-                      role={contract.status === 'completed' ? 'button' : undefined}
-                      tabIndex={contract.status === 'completed' ? 0 : undefined}
-                      aria-label={contract.status === 'completed' ? `Open ${contract.name}` : undefined}
-                      className={`flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 sm:p-6 gap-4 precise-transition ${
-                        contract.status === 'completed'
-                          ? 'cursor-pointer hover:bg-overlay/2'
-                          : 'cursor-not-allowed opacity-75'
-                      }`}
-                    >
-                      <div className="space-y-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-3">
-                          <span className="font-semibold text-text-primary text-sm tracking-wide break-all">
-                            {contract.name}
-                          </span>
-                          {getStatusBadge(contract.status)}
-                        </div>
-                        {jobStatusNotice(contract) && <p role="status" className="text-xs text-risk-medium max-w-xl leading-relaxed break-words">{jobStatusNotice(contract)}</p>}
-                        <div className="flex flex-wrap items-center gap-4 text-xs font-mono text-text-secondary">
-                          <span>ID: {contract.id.substring(0, 8)}...</span>
-                          <span>•</span>
-                          <span>Uploaded: {new Date(contract.createdAt).toLocaleDateString()}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-4 sm:gap-6 self-end sm:self-auto">
-                        {contract.status === 'completed' && (
-                          <div className="flex items-center gap-3">
-                            <div className="text-right">
-                              <span className="text-[10px] font-mono text-text-muted block uppercase">Risk Score</span>
-                              <span className="text-sm font-mono font-bold text-text-primary tnum">
-                                {contract.overallRiskScore}%
-                              </span>
-                            </div>
-                            <div className={`w-8 h-8 rounded-full border flex items-center justify-center font-mono text-xs font-bold tnum ${getRiskColor(contract.overallRiskScore)}`}>
-                              {contract.overallRiskScore}
-                            </div>
-                          </div>
-                        )}
-
-                        {confirmingDeleteId === contract.id ? (
-                          <div className="flex items-center gap-2" role="group" aria-label={`Confirm deletion of ${contract.name}`}>
-                            <span className="text-xs font-mono text-risk-critical">Delete?</span>
-                            <Button
-                              size="sm"
-                              variant="danger"
-                              disabled={deletingId === contract.id}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void handleDeleteContract(contract.id);
-                              }}
-                            >
-                              {deletingId === contract.id ? <Spinner className="h-3 w-3" label="Deleting contract" /> : 'Confirm'}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setConfirmingDeleteId(null);
-                              }}
-                            >
-                              Cancel
-                            </Button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setConfirmingDeleteId(contract.id);
-                            }}
-                            aria-label={`Delete ${contract.name}`}
-                            title="Delete contract"
-                            className="p-1.5 rounded hover:bg-risk-critical/10 text-text-muted hover:text-risk-critical precise-transition"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-
-                        {contract.status === 'completed' && (
-                          <ChevronRight className="w-5 h-5 text-text-muted hover:text-accent-cyan precise-transition" />
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Card>
-          </>
+        {notification && !demo && (
+          <div className="margin-note flex flex-wrap items-center justify-between gap-2 px-4">
+            <p role="status" className="reading text-text-secondary">{notification}</p>
+            <Button variant="ghost" onClick={() => setNotification(null)}>Dismiss</Button>
+          </div>
         )}
+
+        {loadStatus === 'error' && contracts.length > 0 && (
+          <p className="margin-note reading text-text-secondary" role="alert">Could not refresh the contract list. The previous results are still shown.</p>
+        )}
+
+        {hasLoaded && contracts.length > 0 && (
+          <dl className="ledger-metrics" aria-label="Workspace totals">
+            <div className="metric-lead"><dt>Contracts</dt><dd>{contracts.length}</dd><dd className="metric-meta">{completedContracts.length} analyzed</dd></div>
+            <div><dt>High or critical</dt><dd>{highRiskContracts}</dd><dd className="metric-meta">Of {completedContracts.length} analyzed</dd></div>
+            <div><dt>In analysis</dt><dd>{contracts.filter((c) => c.status === 'processing').length}</dd><dd className="metric-meta">Currently processing</dd></div>
+            <div><dt>Average score</dt><dd>{completedContracts.length ? avgRiskScore : '—'}</dd><dd className="metric-meta">Out of 100</dd></div>
+          </dl>
+        )}
+
+        <div className="ledger-layout">
+          <section className="sheet ledger" aria-labelledby="register-title">
+            <div className="ledger-header">
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <h2 id="register-title" className="text-xl font-semibold tracking-tight">Contract register</h2>
+                {hasLoaded && !demo && <p className="eyebrow" role="status">{filteredContracts.length}{filtersActive ? ` of ${contracts.length}` : ''} contracts</p>}
+              </div>
+              <Button variant="ghost" size="sm" onClick={handleRefresh} aria-label="Refresh contracts"><RefreshCw size={16} aria-hidden="true" /> Refresh</Button>
+            </div>
+
+            {hasLoaded && contracts.length > 0 && (
+              <div className="ledger-filters">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" size={16} aria-hidden="true" />
+                  <input type="search" value={query} onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search contracts by name" aria-label="Search contracts by name" className="field pl-9" />
+                </div>
+                <div className="filter-controls">
+                  <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)} aria-label="Filter by status" className="field">
+                    {statuses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                  <select value={riskFilter} onChange={(e) => setRiskFilter(e.target.value as RiskFilter)} aria-label="Filter by risk level" className="field">
+                    <option value="all">All risk levels</option>
+                    {riskLevels.map((level) => <option key={level} value={level.toLowerCase()}>{level}</option>)}
+                  </select>
+                  <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)} aria-label="Sort contracts" className="field">
+                    {sortOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                  {filtersActive && <Button variant="ghost" size="sm" onClick={clearFilters}><X size={14} aria-hidden="true" /> Clear</Button>}
+                </div>
+              </div>
+            )}
+
+            {!hasLoaded ? (
+              <div className="space-y-4 p-6" aria-busy="true" role="status">
+                <p className="text-text-secondary">Loading contracts…</p>
+                {[0, 1, 2].map((index) => <Skeleton key={index} className="h-8 w-full" />)}
+              </div>
+            ) : demo ? (
+              <EmptyState icon={<FileText size={20} />} title="You’re in the local demo"
+                description="This installation has no sign-in provider. Connect one to upload a contract and keep its review."
+              />
+            ) : contracts.length === 0 ? (
+              loadStatus === 'error' ? (
+                <EmptyState title="Contracts are unavailable" description="Refresh the list to try again."
+                  action={<Button variant="outline" onClick={handleRefresh}>Try again</Button>} />
+              ) : (
+                <EmptyState icon={<FileText size={20} />} title="No contracts yet"
+                  description="Choose your first agreement to get a clause-by-clause review."
+                  action={<Link to="/upload" className="action action-primary"><Plus size={18} aria-hidden="true" /> Upload contract</Link>} />
+              )
+            ) : filteredContracts.length === 0 ? (
+              <EmptyState icon={<Search size={20} />} title="No matching contracts"
+                description="Change the search or clear the filters."
+                action={<Button variant="outline" onClick={clearFilters}>Clear filters</Button>} />
+            ) : (
+              <ul className="ledger-rows" aria-label="Contracts">
+                {filteredContracts.map((contract) => {
+                  const completed = contract.status === 'completed';
+                  const deleting = confirmingDeleteId === contract.id;
+                  const notice = jobStatusNotice(contract);
+                  const risk = riskBucket(contract.overallRiskScore);
+                  return (
+                    <li className="ledger-row" key={contract.id}>
+                      <div className="min-w-0">
+                        {completed ? (
+                          <Link to={`/contract/${contract.id}`} className="ledger-name group" onClick={(event) => {
+                            if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
+                              event.preventDefault();
+                              handleSelectContract(contract);
+                            }
+                          }}>
+                            {contract.name}<ArrowUpRight className="shrink-0 text-text-muted group-hover:text-accent-brand" size={16} aria-hidden="true" />
+                          </Link>
+                        ) : <p className="ledger-name">{contract.name}</p>}
+                        <p className="mt-1 break-words text-sm text-text-muted" title={contract.id}>
+                          <time dateTime={contract.createdAt}>{Number.isFinite(Date.parse(contract.createdAt)) ? dateFormat.format(new Date(contract.createdAt)) : 'Date unavailable'}</time>
+                          <span className="ml-2 font-mono text-xs">{contract.id.slice(0, 8)}</span>
+                        </p>
+                        {notice && <p className="mt-2 text-sm text-risk-medium">{notice}</p>}
+                      </div>
+                      <div className="ledger-status">
+                        {getStatusBadge(contract.status)}
+                        {completed && <span className={`tnum text-sm font-semibold capitalize ${riskColors[risk]}`}>{contract.overallRiskScore} / 100 · {risk}</span>}
+                      </div>
+                      {deleting ? (
+                        <div className="ledger-delete flex flex-wrap items-center gap-2" role="group" aria-label={`Confirm deletion of ${contract.name}`}>
+                          <span className="text-sm text-risk-critical">Delete this contract?</span>
+                          <Button size="sm" variant="danger" disabled={deletingId === contract.id} onClick={() => void handleDeleteContract(contract.id)}>
+                            {deletingId === contract.id ? <Spinner className="h-4 w-4" label="Deleting contract" /> : 'Delete'}
+                          </Button>
+                          <Button size="sm" variant="ghost" disabled={deletingId === contract.id} onClick={() => setConfirmingDeleteId(null)}>Cancel</Button>
+                        </div>
+                      ) : (
+                        <button type="button" className="icon-control hover:text-risk-critical" aria-label={`Delete ${contract.name}`}
+                          onClick={() => setConfirmingDeleteId(contract.id)}><Trash2 size={17} aria-hidden="true" /></button>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+
+          {hasLoaded && contracts.length > 0 && (
+            <aside className="ledger-aside" aria-label="Risk overview">
+              <section aria-labelledby="distribution-title">
+                <h2 id="distribution-title" className="text-xl font-semibold tracking-tight">Risk distribution</h2>
+                <p className="mt-1 text-sm text-text-muted">Completed reviews by risk level.</p>
+                <dl className="mt-4 grid gap-3">
+                  {riskLevels.map((label) => {
+                    const key = label.toLowerCase() as Exclude<RiskFilter, 'all'>;
+                    const count = riskCounts[key];
+                    return (
+                      <div className="distribution-row" key={label}>
+                        <dt className="text-sm font-medium">{label}</dt>
+                        <dd className="risk-bar" aria-hidden="true"><span style={{ width: `${100 * count / Math.max(completedContracts.length, 1)}%`, background: `var(--risk-${key})` }} /></dd>
+                        <dd className="font-mono text-xs tnum">{count}</dd>
+                      </div>
+                    );
+                  })}
+                </dl>
+              </section>
+              <section className="border-t border-rule pt-6" aria-labelledby="trend-title">
+                <h2 id="trend-title" className="text-xl font-semibold tracking-tight">Risk over time</h2>
+                <p className="mt-1 text-sm text-text-muted">Average score by upload month.</p>
+                {trendData.some((point) => point.avgRisk !== null) ? (
+                  <>
+                    <div className="mt-4 h-32 w-full" aria-hidden="true">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={trendData} margin={{ left: -28, right: 8, top: 8 }}>
+                          <CartesianGrid stroke="var(--rule)" vertical={false} />
+                          <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={11} tickLine={false} axisLine={false} />
+                          <YAxis stroke="var(--text-muted)" ticks={[0, 50, 100]} domain={[0, 100]} fontSize={11} tickLine={false} axisLine={false} />
+                          <Tooltip formatter={(value) => [value, 'Average score']} contentStyle={{ background: 'var(--bg-panel)', borderColor: 'var(--rule)' }}
+                            labelStyle={{ color: 'var(--text-primary)' }} itemStyle={{ color: 'var(--text-secondary)' }} />
+                          <Line dataKey="avgRisk" stroke="var(--accent)" strokeWidth={2} isAnimationActive={false} connectNulls={false} dot={{ r: 3, fill: 'var(--accent)' }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <details className="mt-2 text-sm text-text-secondary">
+                      <summary className="min-h-8 cursor-pointer">Monthly scores</summary>
+                      <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
+                        {trendData.map(({ name, avgRisk }) => <div className="contents" key={name}><dt>{name}</dt><dd>{avgRisk === null ? 'No reviews' : `${avgRisk} / 100`}</dd></div>)}
+                      </dl>
+                    </details>
+                  </>
+                ) : <p className="mt-4 text-sm text-text-secondary">No completed reviews in the past six months.</p>}
+              </section>
+            </aside>
+          )}
+        </div>
       </main>
       <ToastViewport toasts={toasts} onDismiss={removeToast} />
     </div>

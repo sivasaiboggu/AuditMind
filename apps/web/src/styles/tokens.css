@@ -1,0 +1,120 @@
+/* OKLCH values and sRGB fallbacks are mirrored in tokens.json. */
+:root {
+  color-scheme: light;
+  --neutral-1: #fcfbf7;
+  --neutral-2: #f6f4ee;
+  --neutral-3: #eeebe3;
+  --neutral-4: #e6e2d7;
+  --neutral-5: #d7d2c5;
+  --neutral-6: #bdb7aa;
+  --neutral-7: #8d877b;
+  --neutral-8: #6b655b;
+  --neutral-9: #58534a;
+  --neutral-10: #3c3831;
+  --neutral-11: #26241f;
+  --neutral-12: #191814;
+  --bg-base: #f6f4ee;
+  --bg-panel: #fcfbf7;
+  --bg-hover: #eeebe3;
+  --rule: #d7d2c5;
+  --control: #8a8374;
+  --text-primary: #191814;
+  --text-secondary: #58534a;
+  --text-muted: #6b655b;
+  --overlay: #191814;
+  --accent: #2448b7;
+  --on-accent: #fffcf6;
+  --ring: #2448b7;
+  --risk-critical: #993b32;
+  --risk-high: #8b4427;
+  --risk-medium: #76541e;
+  --risk-low: #3c634d;
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-10: 40px;
+  --s-12: 48px;
+  --s-16: 64px;
+  --s-20: 80px;
+  --s-24: 96px;
+  --shadow-1: inset 0 0 0 1px color-mix(in srgb, var(--overlay) 3%, transparent);
+  --shadow-2: 0 1px 2px #00000014, 0 4px 12px #00000012;
+  --shadow-3: 0 2px 4px #0000001c, 0 16px 32px #00000024;
+  --radius-control: 4px;
+  --font-text: 'Bricolage Grotesque Variable', system-ui, sans-serif;
+  --font-display: var(--font-text);
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --measure: 68ch;
+}
+.dark {
+  color-scheme: dark;
+  --bg-base: #1e1d19;
+  --bg-panel: #282621;
+  --bg-hover: #35322b;
+  --rule: #49453d;
+  --control: #8c8578;
+  --text-primary: #f5f1e7;
+  --text-secondary: #d1cabd;
+  --text-muted: #b4ac9b;
+  --overlay: #f5f1e7;
+  --accent: #a9bbff;
+  --on-accent: #131f4c;
+  --ring: #a9bbff;
+  --risk-critical: #ffa79d;
+  --risk-high: #f0af8d;
+  --risk-medium: #dec181;
+  --risk-low: #a1cbb1;
+}
+@supports (color: oklch(0.5 0 0)) {
+  :root {
+    --neutral-1: oklch(0.987745 0.005384 95.0981);
+    --neutral-2: oklch(0.967033 0.008238 91.4829);
+    --neutral-3: oklch(0.940187 0.011151 89.7248);
+    --neutral-4: oklch(0.912894 0.015375 90.2421);
+    --neutral-5: oklch(0.864167 0.018478 89.3718);
+    --neutral-6: oklch(0.780701 0.019308 86.1591);
+    --neutral-7: oklch(0.625109 0.019005 84.5929);
+    --neutral-8: oklch(0.509221 0.017186 80.6490);
+    --neutral-9: oklch(0.444178 0.015761 82.3658);
+    --neutral-10: oklch(0.342433 0.013134 81.7335);
+    --neutral-11: oklch(0.260689 0.009559 88.7767);
+    --neutral-12: oklch(0.208650 0.007832 95.4332);
+    --bg-base: oklch(0.967033 0.008238 91.4829);
+    --bg-panel: oklch(0.987745 0.005384 95.0981);
+    --bg-hover: oklch(0.940187 0.011151 89.7248);
+    --rule: oklch(0.864167 0.018478 89.3718);
+    --control: oklch(0.611790 0.023567 85.9601);
+    --text-primary: oklch(0.208650 0.007832 95.4332);
+    --text-secondary: oklch(0.444178 0.015761 82.3658);
+    --text-muted: oklch(0.509221 0.017186 80.6490);
+    --overlay: oklch(0.208650 0.007832 95.4332);
+    --accent: oklch(0.449206 0.180333 265.5980);
+    --on-accent: oklch(0.991716 0.008537 84.5722);
+    --ring: oklch(0.449206 0.180333 265.5980);
+    --risk-critical: oklch(0.481011 0.128039 28.2437);
+    --risk-high: oklch(0.471046 0.105492 41.9649);
+    --risk-medium: oklch(0.471668 0.082781 75.4973);
+    --risk-low: oklch(0.463676 0.057364 158.4342);
+  }
+  .dark {
+    --bg-base: oklch(0.230358 0.007657 95.3930);
+    --bg-panel: oklch(0.268973 0.009491 88.7725);
+    --bg-hover: oklch(0.317858 0.012807 87.5634);
+    --rule: oklch(0.391745 0.014204 84.5891);
+    --control: oklch(0.619040 0.020855 83.0462);
+    --text-primary: oklch(0.958506 0.013940 88.6840);
+    --text-secondary: oklch(0.841047 0.019399 83.0618);
+    --text-muted: oklch(0.746365 0.025495 85.7966);
+    --overlay: oklch(0.958506 0.013940 88.6840);
+    --accent: oklch(0.803307 0.098704 272.5940);
+    --on-accent: oklch(0.258697 0.084759 268.5802);
+    --ring: oklch(0.803307 0.098704 272.5940);
+    --risk-critical: oklch(0.812584 0.105888 26.7174);
+    --risk-high: oklch(0.806883 0.089342 48.6439);
+    --risk-medium: oklch(0.821277 0.088459 86.1273);
+    --risk-low: oklch(0.804665 0.057566 157.6587);
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "AuditMind",
+  "short_name": "AuditMind",
+  "description": "Review contract clauses and see the words behind each finding.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f4ee",
+  "theme_color": "#f6f4ee",
+  "icons": [
+    { "src": "/icon-192.png", "type": "image/png", "sizes": "192x192", "purpose": "any" },
+    { "src": "/icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "any maskable" }
+  ]
+}

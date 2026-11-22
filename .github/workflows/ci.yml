@@ -1,4 +1,4 @@
-name: CI — Build & Type Check
+name: CI — Build and verify
 
 on:
   push:
@@ -8,23 +8,26 @@ on:
 
 jobs:
   build-web:
-    name: Build Web App
+    name: Build and test AuditMind
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: '24'
+          cache: npm
 
-      - name: Install dependencies
-        run: npm install
+      - name: Install locked dependencies
+        run: npm ci
 
-      - name: Type check API
-        run: npm run build:api
+      - name: Verify scripts, web utilities and API
+        run: |
+          npm run test:scripts
+          npm test --workspace apps/web
+          npm run test:security
 
       - name: Build Web for production
         run: npm run build:web
@@ -35,8 +38,21 @@ jobs:
           VITE_WS_URL: ${{ secrets.VITE_WS_URL }}
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: web-dist
           path: apps/web/dist
           retention-days: 7
+
+      - name: Install test browser
+        run: npx playwright-core install --with-deps chromium
+
+      - name: Check browser workflows and accessibility with synthetic services
+        run: |
+          npm run build:web
+          npm run shots -- verify apps/web/dist
+        env:
+          VITE_SUPABASE_URL: https://dummy.supabase.co
+          VITE_SUPABASE_ANON_KEY: dummy-anon-key
+          VITE_API_URL: http://127.0.0.1:9462
+          VITE_WS_URL: ws://127.0.0.1:9462/ws
