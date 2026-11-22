@@ -37,13 +37,16 @@ export function ruleBasedAnalysis(
   item: { title: string; text: string },
   regContext: string
 ): ClauseAnalysisResult {
-  const signal = classification.signal ? ` It matched the review pattern "${classification.signal}".` : '';
+  // Name the exact words that earned the tier, in plain words — never the
+  // regex source (it used to read `indemnif\w*.{0,200}negligence`).
+  const matched = (classification.matched ?? []).filter(Boolean);
+  const evidence = matched.length > 0 ? ` It matched: ${matched.join(', ')}.` : '';
   const contextNote = regContext && regContext !== UNAVAILABLE_CONTEXT
     ? ' Retrieved regulatory excerpts are included as context only; applicability has not been verified.'
     : '';
   return {
     explanation:
-      `Rule-based review summary — no AI assessment was performed. This clause was flagged as ${classification.label} risk by the heuristic review rules.${signal} Review the original clause text directly and seek qualified counsel before relying on it.${contextNote}`,
+      `Rule-based review summary — no AI assessment was performed. This clause was flagged as ${classification.label} risk by the heuristic review rules.${evidence} Review the original clause text directly and seek qualified counsel before relying on it.${contextNote}`,
     suggestedRedline:
       'No automated redline was generated because the explanation service was unavailable. Ask qualified counsel to draft a safer version.',
   };
@@ -206,7 +209,12 @@ export async function processContract(
             risk_level: label,
             risk_explanation: analysis.explanation,
             suggested_redline: analysis.suggestedRedline,
-            risk_score: score
+            risk_score: score,
+            // The exact words that earned the tier, stored with the clause
+            // so the review UI can show the evidence without re-running the
+            // rules. Empty when no rule fired (or the tier came from a
+            // model, which names no words) — never invented.
+            matched_terms: classification.matched ?? []
           };
         } catch (err) {
           console.error('Clause processing failed.');

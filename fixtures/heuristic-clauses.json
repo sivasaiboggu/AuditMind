@@ -34,6 +34,8 @@
     { "text": "indemnification obligations of the parties", "label": "high", "confidence": 0.79 },
     { "text": "confidential information must not be disclosed", "label": "medium", "confidence": 0.72 },
     { "text": "force-majeure event", "label": "medium", "confidence": 0.72 },
-    { "text": "perpetual license filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler irrevocable terms", "label": "low", "confidence": 0.62 }
+    { "text": "perpetual license filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler irrevocable terms", "label": "low", "confidence": 0.62 },
+    { "text": "all shared information is non-confidential and may be disclosed freely", "label": "low", "confidence": 0.62 },
+    { "text": "the determination of fees may change without notice", "label": "low", "confidence": 0.62 }
   ]
 }

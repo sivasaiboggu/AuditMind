@@ -94,6 +94,15 @@ describe('buildReportMarkdown', () => {
     assert.doesNotMatch(md, /Suggested revision:/);
   });
 
+  it('lists the matched words that earned the tier, and omits the line when none were stored', () => {
+    const md = buildReportMarkdown(contract, [
+      clause({ matchedTerms: ['indemnify', 'negligence'] }),
+      clause({ id: 'cl-2', matchedTerms: undefined }),
+    ]);
+    assert.match(md, /Matched words: indemnify, negligence/);
+    assert.equal(md.match(/Matched words:/g)?.length, 1);
+  });
+
   it('states plainly when there are no clauses', () => {
     const md = buildReportMarkdown(contract, []);
     assert.match(md, /No clause results are available for this contract\./);

@@ -13,40 +13,54 @@ export interface MLClassification {
   confidence: number;
   method?: string;
   calibrated?: boolean;
-  /** The review pattern that fired, when the heuristic fallback classified it. */
-  signal?: string;
+  /** The exact words in the clause that earned the tier — the evidence
+   * behind the score, never the regex source. Empty when no rule fired. */
+  matched?: string[];
 }
 
 /**
  * Heuristic fallback classifier when FastAPI is offline. Mirrors the
- * patterns, tier order, labels and confidences of the Python service's
- * compute_local_heuristics exactly: the offline path must never silently
+ * patterns, tier order, labels, confidences and probes of the Python
+ * service's risk_rules.py exactly: the offline path must never silently
  * assign a clause a different risk tier than the service would.
  * Uncalibrated review rules, not legal advice or trained-model probabilities.
+ *
+ * Each rule is [pattern, label, confidence, probes]: the pattern decides
+ * the tier, the probes name the exact words it fired on.
  *
  * Two-part patterns are bounded to .{0,200} (see risk_rules.py): an
  * unbounded ".*" escalated any two words co-occurring anywhere in a long
  * clause. Word-family stems cover inflections the bare words missed
  * ("indemnification", "confidential information").
+ *
+ * Every pattern starts at a word boundary: substring matching counted
+ * "determination" as "terminate ... without notice". The confidential rule
+ * also refuses a "non-" prefix, so a clause saying information is
+ * non-confidential is not flagged as a confidentiality risk.
  */
-const FALLBACK_RULES: [RegExp, MLClassification['label'], number][] = [
-  [/liquidated damages/, 'critical', 0.88],
-  [/perpetual.{0,200}irrevocable/, 'critical', 0.88],
-  [/negligence.{0,200}disclosing/, 'critical', 0.88],
-  [/indemnif\w*.{0,200}negligence/, 'critical', 0.88],
-  [/indemnif\w*/, 'high', 0.79],
-  [/intellectual property/, 'high', 0.79],
-  [/sole discretion/, 'high', 0.79],
-  [/limitation of liability/, 'high', 0.79],
-  [/governing law/, 'high', 0.79],
-  [/unlimited liability/, 'high', 0.79],
-  [/non[-\s]?compete/, 'high', 0.79],
-  [/automatic.{0,200}renew/, 'medium', 0.72],
-  [/auto[-\s]?renew/, 'medium', 0.72],
-  [/exclusive jurisdiction/, 'medium', 0.72],
-  [/confidential/, 'medium', 0.72],
-  [/force[-\s]?majeure/, 'medium', 0.72],
-  [/terminat\w*.{0,40}without notice/, 'medium', 0.72],
+const FALLBACK_RULES: [RegExp, MLClassification['label'], number, RegExp[]][] = [
+  [/\bliquidated damages/, 'critical', 0.88, [/\bliquidated damages/]],
+  [/\bperpetual.{0,200}\birrevocable/, 'critical', 0.88,
+   [/\bperpetual\w*/, /\birrevocable\w*/]],
+  [/\bnegligence.{0,200}\bdisclosing/, 'critical', 0.88,
+   [/\bnegligence\w*/, /\bdisclosing\w*/]],
+  [/\bindemnif\w*.{0,200}\bnegligence/, 'critical', 0.88,
+   [/\bindemnif\w*/, /\bnegligence\w*/]],
+  [/\bindemnif\w*/, 'high', 0.79, [/\bindemnif\w*/]],
+  [/\bintellectual property/, 'high', 0.79, [/\bintellectual property/]],
+  [/\bsole discretion/, 'high', 0.79, [/\bsole discretion/]],
+  [/\blimitation of liability/, 'high', 0.79, [/\blimitation of liability/]],
+  [/\bgoverning law/, 'high', 0.79, [/\bgoverning law/]],
+  [/\bunlimited liability/, 'high', 0.79, [/\bunlimited liability/]],
+  [/\bnon[-\s]?compete/, 'high', 0.79, [/\bnon[-\s]?compete\w*/]],
+  [/\bautomatic.{0,200}\brenew/, 'medium', 0.72,
+   [/\bautomatic\w*/, /\brenew\w*/]],
+  [/\bauto[-\s]?renew/, 'medium', 0.72, [/\bauto[-\s]?renew\w*/]],
+  [/\bexclusive jurisdiction/, 'medium', 0.72, [/\bexclusive jurisdiction/]],
+  [/(?<!non[-\s])\bconfidential/, 'medium', 0.72, [/\bconfidential\w*/]],
+  [/\bforce[-\s]?majeure/, 'medium', 0.72, [/\bforce[-\s]?majeure\w*/]],
+  [/\bterminat\w*.{0,40}\bwithout notice/, 'medium', 0.72,
+   [/\bterminat\w*/, /\bwithout notice/]],
 ];
 
 function normalizeClause(text: unknown): string {
@@ -65,6 +79,39 @@ function boundedRaw(text: unknown): string {
   return text.slice(0, MAX_CLAUSE_CHARS);
 }
 
+/** One word list per matched rule, in tier order — the same shape as the
+ * Python service's match_review_patterns. A probe only runs for a rule
+ * that already matched, so it can only name words that fired it. */
+function matchReviewPatterns(normalized: string): string[][] {
+  const matched: string[][] = [];
+  for (const [pattern, , , probes] of FALLBACK_RULES) {
+    if (!pattern.test(normalized)) continue;
+    const terms: string[] = [];
+    for (const probe of probes) {
+      const found = probe.exec(normalized);
+      if (found) terms.push(found[0]);
+    }
+    matched.push(terms);
+  }
+  return matched;
+}
+
+/** The exact words that earned the clause its tier, de-duplicated in
+ * first-match order. Mirrors the Python service's matched_terms. */
+export function matchedTerms(text: string): string[] {
+  const seen = new Set<string>();
+  const terms: string[] = [];
+  for (const group of matchReviewPatterns(normalizeClause(text))) {
+    for (const term of group) {
+      if (!seen.has(term)) {
+        seen.add(term);
+        terms.push(term);
+      }
+    }
+  }
+  return terms;
+}
+
 /** Distinct review patterns matched; drives the risk-score signal modifier. */
 function countFallbackMatches(normalized: string): number {
   let count = 0;
@@ -77,12 +124,25 @@ function countFallbackMatches(normalized: string): number {
 
 export function fallbackClassify(text: string): MLClassification {
   const normalized = normalizeClause(text);
-  for (const [pattern, label, confidence] of FALLBACK_RULES) {
+  for (const [pattern, label, confidence, probes] of FALLBACK_RULES) {
     if (pattern.test(normalized)) {
-      return { label, confidence, method: 'api_heuristic_review_rules', calibrated: false, signal: pattern.source };
+      const matched: string[] = [];
+      for (const probe of probes) {
+        const found = probe.exec(normalized);
+        if (found) matched.push(found[0]);
+      }
+      return { label, confidence, method: 'api_heuristic_review_rules', calibrated: false, matched };
     }
   }
-  return { label: 'low', confidence: 0.62, method: 'api_heuristic_review_rules', calibrated: false };
+  return { label: 'low', confidence: 0.62, method: 'api_heuristic_review_rules', calibrated: false, matched: [] };
+}
+
+/** A service `matched` value is only trusted when it is an array of
+ * non-empty strings; anything else is dropped rather than surfaced. */
+function validMatched(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const terms = value.filter((t): t is string => typeof t === 'string' && t.trim() !== '');
+  return terms.length === value.length ? terms : undefined;
 }
 
 /**
@@ -98,9 +158,13 @@ export async function classifyClauseRisk(text: string): Promise<MLClassification
         confidence < 0 || confidence > 1) {
       throw new Error('Invalid risk classification response');
     }
+    const matched = validMatched(response.data.matched);
     return { label, confidence,
       method: typeof response.data.method === 'string' ? response.data.method : 'unspecified',
-      calibrated: false };
+      calibrated: false,
+      // The service names the words that fired; a model response carries
+      // none, so the field is absent rather than invented.
+      ...(matched !== undefined ? { matched } : {}) };
 
   } catch (error) {
     // Graceful fallback to rule-based evaluation. An empty clause throws

@@ -1,6 +1,43 @@
 # Changelog
 All notable changes will be documented here.
 
+## 1.0.7 — 22 Nov 2026
+- Patch release (1.0.7): master-prompt polish (round 10) — the evidence
+  line, OKLCH tokens, and a whole-word rule fix. Full suites re-verified:
+  API 184 passed, ML 27 passed (+63 subtests), web 30 passed, scripts 3
+  passed, 0 failed.
+- Signature idea: every risk score now shows the exact words that earned
+  it. The ML service returns `matched` (the actual words, never the regex
+  source) on `/classify-clause` and `/risk-score`; the API fallback
+  mirrors it; the worker stores it as `matched_terms` on each clause
+  (new additive migration `20261025000004_clause_matched_terms.sql`,
+  RPC updated, disposable-DB harness extended — migration not yet run
+  against any live project); the clauses endpoint returns `matchedTerms`
+  when stored and omits it otherwise. The review UI shows the evidence
+  line on clause cards, the analysis tab (with the words underlined in
+  the clause text, in the risk colour), the compare tab and the exported
+  Markdown report; the landing shows one labelled sample finding the
+  same way. The rule-based explanation names the matched words in plain
+  words — it used to quote the regex source (`indemnif\w*...`).
+- Logic fix: review patterns now match at word boundaries in both the
+  Python service and the TypeScript fallback, so "determination" no
+  longer fires the terminate-without-notice rule and "non-confidential"
+  no longer fires the confidentiality rule — both previously scored
+  medium. Shared fixture battery extended with both cases.
+- Design: theme tokens are now OKLCH triplets with hex fallbacks
+  (index.css + tailwind.config.js), and risk hues are per-theme tokens:
+  light mode uses the darker step so small badge text passes WCAG AA on
+  white (critical was 3.76:1, high 2.80:1); dark mode keeps the bright
+  step. Full contrast table in docs/DESIGN_SYSTEM.md, which was rewritten
+  — it still described the retired cyan/indigo glass system. Chart fills
+  keep the bright hexes (fills are not text).
+- Docs: design references for this round in
+  docs/design-references-1.0.7.md; README notes the matched-words
+  evidence; root DEPLOYMENT.md points at the migration requirement.
+- Renders: fresh renders in docs/screenshots-1.0.7/ (demo + live modes),
+  read and checked by hand. Seed clauses carry the matched terms the
+  review rules actually produce for their text.
+
 ## 1.0.6 — 22 Nov 2026
 - Patch release (1.0.6): premium UI pass (round 9) following the design
   playbook — references collected first (Linear, Stripe Dashboard, Attio,

@@ -3,12 +3,12 @@ import uvicorn
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-from risk_rules import compute_local_heuristics, count_heuristic_matches, validated_risk_prediction
+from risk_rules import compute_local_heuristics, count_heuristic_matches, matched_terms, validated_risk_prediction
 
 
 # Single source of truth for the ML service version; keep in sync with the
 # monorepo release in the root package.json.
-APP_VERSION = "1.0.6"
+APP_VERSION = "1.0.7"
 
 
 @asynccontextmanager
@@ -108,6 +108,9 @@ def classify_clause(payload: ClauseInput):
       "model": "local_nlp_rules_fallback",
       "method": "heuristic_review_rules",
       "calibrated": False,
+      # The exact words that earned the tier — the evidence behind the
+      # score, not the regex that matched. Empty when no rule fired.
+      "matched": matched_terms(payload.text),
       "device": "cpu"
   }
 
@@ -139,6 +142,7 @@ def risk_score(payload: ClauseInput):
   return {
       "score": final_score,
       "signals": signals,
+      "matched": matched_terms(payload.text),
       "model": "risk_scoring_matrix_v1",
       "method": "heuristic_review_rules",
       "calibrated": False

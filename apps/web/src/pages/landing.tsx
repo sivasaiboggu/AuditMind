@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth-context';
 import { useTheme } from '../lib/theme';
 import { APP_VERSION } from '../lib/constants';
+import { splitByMatchedTerms, formatMatchedTerms } from '../lib/evidence';
 import { ArrowRight, Moon, Sun } from 'lucide-react';
 
 /** How it works, as numbered steps — a list with dividers, not three
@@ -40,6 +41,18 @@ const LIMITS = [
   'Explanations need a Gemini key, or you get a labelled rule-based summary',
   'Scanned images need OCR before upload — no readable text, no review',
 ];
+
+/** One finding, shown as it appears in the review workspace. Sample data
+ * from the demo contract (Mutual NDA, Section 5), labelled as such — the
+ * score and the matched words are the fixture's own, from the review rules. */
+const SAMPLE_FINDING = {
+  number: 'Section 5',
+  title: 'Limitation of Liability',
+  text: 'Neither party\u2019s total liability shall exceed the fees paid under this agreement, except for breaches of confidentiality, which carry unlimited liability.',
+  riskScore: 82,
+  riskLevel: 'Critical',
+  matchedTerms: ['unlimited liability', 'confidentiality'],
+};
 
 export default function Landing() {
   const navigate = useNavigate();
@@ -135,6 +148,48 @@ export default function Landing() {
             </li>
           ))}
         </ol>
+      </section>
+
+      {/* What a finding looks like — one sample, labelled, with the exact
+          words that earned its score underlined in the risk colour. */}
+      <section className="max-w-7xl mx-auto px-6 py-16 z-10 w-full">
+        <h2 className="font-mono text-sm font-semibold uppercase tracking-wider text-text-primary mb-4">
+          What a finding looks like
+        </h2>
+        <p className="text-sm text-text-secondary leading-relaxed max-w-2xl mb-6">
+          Every risk score ships with the exact words that earned it. Sample
+          from the demo contract — Mutual NDA, Section 5.
+        </p>
+        <div className="max-w-3xl rounded-xl border border-overlay/10 bg-background-panel p-6 shadow-card">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <span className="font-mono text-xs font-bold text-text-primary">
+              {SAMPLE_FINDING.number} · {SAMPLE_FINDING.title}
+            </span>
+            <span className="flex items-center gap-2">
+              <span className="font-mono text-[10px] font-bold text-text-secondary border border-overlay/10 rounded px-1.5 py-0.5 tnum">
+                Score {SAMPLE_FINDING.riskScore} / 100
+              </span>
+              <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-risk-critical border border-risk-critical/20 bg-risk-critical/5 rounded-full px-2.5 py-1">
+                {SAMPLE_FINDING.riskLevel}
+              </span>
+            </span>
+          </div>
+          <p className="text-sm text-text-secondary leading-relaxed">
+            {splitByMatchedTerms(SAMPLE_FINDING.text, SAMPLE_FINDING.matchedTerms).map((segment, i) =>
+              segment.matched ? (
+                <span key={i} className="underline decoration-2 underline-offset-2 decoration-risk-critical font-semibold">
+                  {segment.text}
+                </span>
+              ) : (
+                <span key={i}>{segment.text}</span>
+              ),
+            )}
+          </p>
+          <p className="mt-4 font-mono text-[11px] leading-relaxed">
+            <span className="text-text-muted uppercase tracking-wider">Matched words: </span>
+            <span className="text-risk-critical">{formatMatchedTerms(SAMPLE_FINDING.matchedTerms)}</span>
+          </p>
+        </div>
       </section>
 
       {/* What you get, and the limits — two plain lists, no cards. */}

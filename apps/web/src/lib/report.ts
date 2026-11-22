@@ -67,6 +67,13 @@ export function buildReportMarkdown(
         '',
         `Risk level: ${clause.riskLevel}`,
         '',
+      );
+      // The evidence behind the tier, when the pipeline stored it — never
+      // invented for clauses analysed before it was recorded.
+      if (clause.matchedTerms && clause.matchedTerms.length > 0) {
+        lines.push(`Matched words: ${clause.matchedTerms.join(', ')}`, '');
+      }
+      lines.push(
         clause.text,
         '',
         `Why it matters: ${clause.riskExplanation}`,

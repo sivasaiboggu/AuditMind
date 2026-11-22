@@ -5,7 +5,7 @@ import WebSocket from 'ws';
 import { once } from 'node:events';
 import { buildApp } from '../dist/app.js';
 
-function isolatedStore({storageFails = false, metadataFailsOnce = false, processing = false, missingPath = false, ownershipReadFails = false, insertFails = false, insertUnknown = false, clauseReadFails = false, clauseRiskScore, scoreOverrides} = {}) {
+function isolatedStore({storageFails = false, metadataFailsOnce = false, processing = false, missingPath = false, ownershipReadFails = false, insertFails = false, insertUnknown = false, clauseReadFails = false, clauseRiskScore, clauseMatchedTerms, scoreOverrides} = {}) {
   const rows = [
     { id: 'contract-a', user_id: 'user-a', name: 'Synthetic A', file_path: 'a.txt', status: 'completed' },
     { id: 'contract-b', user_id: 'user-b', name: 'Synthetic B', file_path: 'b.txt', status: 'completed' },
@@ -42,7 +42,7 @@ function isolatedStore({storageFails = false, metadataFailsOnce = false, process
             effects.deleted.push(...data.map(r=>r.id));
           }
           if(table==='clauses' && clauseReadFails) return Promise.resolve({data:null,error:new Error('private-context-error')}).then(resolve,reject);
-          if(table==='clauses') data=[{id:'clause',contract_id:filters.contract_id,number:'Section 1',title:'Synthetic clause',text:'Synthetic contract text',...(clauseRiskScore !== undefined ? {risk_score: clauseRiskScore} : {})}];
+          if(table==='clauses') data=[{id:'clause',contract_id:filters.contract_id,number:'Section 1',title:'Synthetic clause',text:'Synthetic contract text',...(clauseRiskScore !== undefined ? {risk_score: clauseRiskScore} : {}),...(clauseMatchedTerms !== undefined ? {matched_terms: clauseMatchedTerms} : {})}];
           if(rangeArgs) data=data.slice(rangeArgs[0],rangeArgs[1]+1);
           return Promise.resolve({data,error:null}).then(resolve,reject);
         }
@@ -171,6 +171,22 @@ test('clause endpoint returns the stored per-clause score and omits it when none
     assert.equal(body.length,1);
     assert.equal('riskScore' in body[0],false);
   } finally {await plain.app.close();}
+});
+
+test('clause endpoint returns stored matched words and omits them when none were stored',async()=>{
+  const stored=await fixture({clauseMatchedTerms:['indemnify','negligence']});
+  try {
+    const body=(await stored.app.inject({url:'/contracts/contract-a/clauses',headers:headers('user-a')})).json();
+    assert.equal(body.length,1);
+    assert.deepEqual(body[0].matchedTerms,['indemnify','negligence']);
+  } finally {await stored.app.close();}
+  for (const terms of [undefined, [], ['indemnify', 42], 'indemnify']) {
+    const plain=await fixture({clauseMatchedTerms: terms});
+    try {
+      const body=(await plain.app.inject({url:'/contracts/contract-a/clauses',headers:headers('user-a')})).json();
+      assert.equal('matchedTerms' in body[0],false);
+    } finally {await plain.app.close();}
+  }
 });
 
 test('contract list coerces stored scores to the 0-100 range instead of passing null or overflow through',async()=>{

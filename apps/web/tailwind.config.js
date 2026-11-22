@@ -14,30 +14,34 @@ export default {
         // `background` / `text` / `overlay` / `accent` switch between the
         // light and dark token sets; risk hues are identical in both.
         background: {
-          base: 'rgb(var(--bg-base) / <alpha-value>)',
-          panel: 'rgb(var(--bg-panel) / <alpha-value>)',
-          hover: 'rgb(var(--bg-hover) / <alpha-value>)',
+          base: 'oklch(var(--bg-base) / <alpha-value>)',
+          panel: 'oklch(var(--bg-panel) / <alpha-value>)',
+          hover: 'oklch(var(--bg-hover) / <alpha-value>)',
         },
         // Subtle tint used for translucent surfaces and hairline borders:
         // white in dark mode, dark slate in light mode.
-        overlay: 'rgb(var(--overlay) / <alpha-value>)',
+        overlay: 'oklch(var(--overlay) / <alpha-value>)',
         // One accent, a theme token: teal-700 on paper, teal-400 on ink.
         // The indigo/violet pair is gone — it read as the default
         // purple-blue SaaS accent. Risk hues are the only other colours.
         accent: {
-          cyan: 'rgb(var(--accent) / <alpha-value>)',
-          brand: 'rgb(var(--accent) / <alpha-value>)',
+          cyan: 'oklch(var(--accent) / <alpha-value>)',
+          brand: 'oklch(var(--accent) / <alpha-value>)',
         },
+        // Risk hues are per-theme OKLCH tokens (see index.css): light mode
+        // uses the darker step so small badge text passes WCAG AA on white;
+        // dark mode keeps the bright step. Chart fills in dashboard.tsx
+        // keep the bright hexes — fills are not text.
         risk: {
-          critical: '#EF4444',
-          high: '#F97316',
-          medium: '#EAB308',
-          low: '#10B981',
+          critical: 'oklch(var(--risk-critical) / <alpha-value>)',
+          high: 'oklch(var(--risk-high) / <alpha-value>)',
+          medium: 'oklch(var(--risk-medium) / <alpha-value>)',
+          low: 'oklch(var(--risk-low) / <alpha-value>)',
         },
         text: {
-          primary: 'rgb(var(--text-primary) / <alpha-value>)',
-          secondary: 'rgb(var(--text-secondary) / <alpha-value>)',
-          muted: 'rgb(var(--text-muted) / <alpha-value>)',
+          primary: 'oklch(var(--text-primary) / <alpha-value>)',
+          secondary: 'oklch(var(--text-secondary) / <alpha-value>)',
+          muted: 'oklch(var(--text-muted) / <alpha-value>)',
         },
       },
       fontFamily: {

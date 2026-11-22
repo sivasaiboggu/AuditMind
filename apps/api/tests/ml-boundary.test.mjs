@@ -91,9 +91,32 @@ test('empty clause text throws instead of being fabricated as low risk',async()=
   }finally{axios.post=original;}
 });
 
-test('offline fallback reports the matched review pattern',()=>{
-  assert.match(fallbackClassify('the party shall indemnify the other').signal,/indemnif/);
-  assert.equal(fallbackClassify('ordinary delivery clause').signal,undefined);
+test('offline fallback reports the matched words, not the regex source',()=>{
+  assert.deepEqual(fallbackClassify('the party shall indemnify the other').matched,['indemnify']);
+  assert.deepEqual(fallbackClassify('indemnify for negligence').matched,['indemnify','negligence']);
+  assert.deepEqual(fallbackClassify('ordinary delivery clause').matched,[]);
+});
+
+test('offline fallback does not fire on substring hosts or negated terms',()=>{
+  // "determination" holds "termination" inside it; "non-confidential" is
+  // the opposite of a confidentiality risk. Both used to score medium.
+  assert.equal(fallbackClassify('the determination of fees may change without notice').label,'low');
+  assert.equal(fallbackClassify('all shared information is non-confidential and may be disclosed freely').label,'low');
+  assert.deepEqual(fallbackClassify('all shared information is non-confidential').matched,[]);
+});
+
+test('service matched words pass through; malformed values are dropped, not surfaced', async () => {
+  const original = axios.post;
+  try {
+    axios.post = async () => ({data:{label:'high',confidence:0.79,method:'heuristic_review_rules',matched:['indemnify','negligence']}});
+    assert.deepEqual((await classifyClauseRisk('indemnify for negligence')).matched,['indemnify','negligence']);
+    axios.post = async () => ({data:{label:'low',confidence:0,method:'configured_risk_model'}});
+    assert.equal((await classifyClauseRisk('ordinary clause')).matched,undefined);
+    axios.post = async () => ({data:{label:'high',confidence:0.79,method:'heuristic_review_rules',matched:'indemnify'}});
+    assert.equal((await classifyClauseRisk('indemnify')).matched,undefined);
+    axios.post = async () => ({data:{label:'high',confidence:0.79,method:'heuristic_review_rules',matched:['indemnify',42]}});
+    assert.equal((await classifyClauseRisk('indemnify')).matched,undefined);
+  } finally { axios.post=original; }
 });
 
 test('oversized clauses are truncated to the same bound the service accepts',async()=>{

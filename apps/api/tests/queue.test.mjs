@@ -114,15 +114,25 @@ test('transient download failures request fenced bounded retry instead of termin
 test('Gemini unavailable completes with a labelled rule-based summary, not a failed contract',async()=>{
  const {effects,deps}=fixture();
  deps.analyze=async()=>{const err=new Error('Clause explanation service is not configured.');err.code='GEMINI_UNAVAILABLE';throw err;};
- deps.classify=async()=>({label:'high',signal:'indemnif\\w*'});
+ deps.classify=async()=>({label:'high',matched:['indemnify','negligence']});
  await processContract('synthetic','synthetic.txt','text/plain',Buffer.from('test'),deps);
  assert.equal(effects.inserted.length,1);
  assert.match(effects.inserted[0].risk_explanation,/Rule-based review summary/);
  assert.match(effects.inserted[0].risk_explanation,/no AI assessment was performed/);
- assert.match(effects.inserted[0].risk_explanation,/indemnif/);
+ // The evidence names the words, in plain words — never the regex source.
+ assert.match(effects.inserted[0].risk_explanation,/It matched: indemnify, negligence\./);
+ assert.doesNotMatch(effects.inserted[0].risk_explanation,/\\/);
+ assert.deepEqual(effects.inserted[0].matched_terms,['indemnify','negligence']);
  assert.match(effects.inserted[0].suggested_redline,/No automated redline was generated/);
  assert.deepEqual(effects.statuses,[{status:'completed',overall_risk_score:42}]);
  assert.equal(effects.progress.at(-1)[1],'completed');
+});
+
+test('worker persists the classification evidence with the clause, empty when no rule fired',async()=>{
+ const {effects,deps}=fixture();
+ deps.classify=async()=>({label:'low',matched:[]});
+ await processContract('synthetic','synthetic.txt','text/plain',Buffer.from('test'),deps);
+ assert.deepEqual(effects.inserted[0].matched_terms,[]);
 });
 
 test('empty contract buffer fails before any extraction or persistence',async()=>{

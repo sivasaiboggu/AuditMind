@@ -3,7 +3,7 @@ import sys
 import unittest
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from risk_rules import compute_local_heuristics, validated_risk_prediction
+from risk_rules import compute_local_heuristics, matched_terms, validated_risk_prediction
 
 # One battery, two implementations. The TypeScript offline fallback test in
 # apps/api/tests/ml-boundary.test.mjs loads the same file; tier or confidence
@@ -78,6 +78,37 @@ class RiskBoundaryTests(unittest.TestCase):
         # clause must not make it critical; the two-part bound is 200 chars.
         far = 'perpetual license ' + 'filler ' * 40 + 'irrevocable terms'
         self.assertEqual(compute_local_heuristics(far)[0], 'low')
+
+    def test_substring_hosts_do_not_fire(self):
+        # Word-boundary rules: a longer word containing a stem is not a
+        # match. "determination" holds "termination" inside it, and a
+        # "non-confidential" clause is the opposite of a confidentiality risk.
+        self.assertEqual(compute_local_heuristics(
+            'the determination of fees may change without notice')[0], 'low')
+        self.assertEqual(compute_local_heuristics(
+            'all shared information is non-confidential and may be disclosed freely')[0], 'low')
+        self.assertEqual(compute_local_heuristics(
+            'the marshall shall preside over the hearing')[0], 'low')
+
+    def test_matched_terms_name_the_exact_words(self):
+        self.assertEqual(matched_terms('indemnify for negligence'),
+                         ['indemnify', 'negligence'])
+        self.assertEqual(matched_terms('indemnification obligations of the parties'),
+                         ['indemnification'])
+        self.assertEqual(matched_terms('confidential information must not be disclosed'),
+                         ['confidential'])
+        self.assertEqual(matched_terms('confidentiality obligations apply'),
+                         ['confidentiality'])
+        self.assertEqual(matched_terms('the company may terminate this agreement without notice'),
+                         ['terminate', 'without notice'])
+        self.assertEqual(matched_terms('this agreement shall automatically renew'),
+                         ['automatically', 'renew'])
+        self.assertEqual(matched_terms('ordinary delivery clause'), [])
+        # Negated and substring hosts surface no evidence either.
+        self.assertEqual(matched_terms(
+            'all shared information is non-confidential and may be disclosed freely'), [])
+        self.assertEqual(matched_terms(
+            'the determination of fees may change without notice'), [])
         near = 'perpetual license with an irrevocable grant'
         self.assertEqual(compute_local_heuristics(near)[0], 'critical')
 

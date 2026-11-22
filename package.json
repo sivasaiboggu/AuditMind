@@ -1,6 +1,6 @@
 {
   "name": "auditmind",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Contract risk review: clause extraction, review rules, retrieval and explanations.",
   "private": true,
   "workspaces": [

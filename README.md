@@ -10,7 +10,7 @@ AuditMind is a contract-review prototype. It extracts clauses, applies review ru
 *   **Localized hybrid classification:** Uses uncalibrated review rules by default. An explicitly enabled, locally available model with named legal-risk labels may be used; a generic relevance score is never mapped to legal risk.
 *   **Interactive compliance dashboard:** Displays dynamic risk trends over time and risk allocations directly synchronized with Supabase database events.
 *   **Proposal redlines:** Offers detailed clause risk explanations and suggested redlines backed by Gemini model reasoning.
-*   **Review workspace:** Search and filter clauses by risk, compare any two clauses side by side, move through the list with the arrow keys, and export a Markdown risk report for the contract. Each clause also shows general next steps for its risk level.
+*   **Review workspace:** Search and filter clauses by risk, compare any two clauses side by side, move through the list with the arrow keys, and export a Markdown risk report for the contract. Each clause also shows general next steps for its risk level. Every risk score is shown with the exact words that earned it — the matched words are stored with the clause and underlined in its text, in the risk colour.
 *   **Background processing:** Jobs are claimed from a durable database job ledger with bounded retries (see `supabase/migrations/20261025000002_durable_contract_jobs.sql` and `20261025000003_bounded_job_retries.sql`). There is no Redis queue.
 
 ---

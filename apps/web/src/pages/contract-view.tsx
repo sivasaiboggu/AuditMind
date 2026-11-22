@@ -1,5 +1,6 @@
 import { authenticatedFetch, sendAuthenticated } from '../lib/api';
 import { buildReportMarkdown, countByRisk, reportFileName } from '../lib/report';
+import { splitByMatchedTerms, formatMatchedTerms } from '../lib/evidence';
 import { workspaceGuard } from '../lib/workspace-guard';
 import { chatHistory, interruptChat, INCOMPLETE_ANSWER } from '../lib/chat-stream';
 import { useState, useEffect, useRef, useMemo } from 'react';
@@ -363,6 +364,42 @@ export default function ContractView() {
     }
   };
 
+  /** The evidence line, in the clause's own risk colour: the exact words
+   * that earned the tier. Static class strings so Tailwind generates them. */
+  const getRiskText = (level: string) => {
+    switch (level) {
+      case 'critical': return 'text-risk-critical';
+      case 'high': return 'text-risk-high';
+      case 'medium': return 'text-risk-medium';
+      default: return 'text-risk-low';
+    }
+  };
+
+  const getRiskUnderline = (level: string) => {
+    switch (level) {
+      case 'critical': return 'decoration-risk-critical';
+      case 'high': return 'decoration-risk-high';
+      case 'medium': return 'decoration-risk-medium';
+      default: return 'decoration-risk-low';
+    }
+  };
+
+  /** The clause text with its matched words underlined in the risk colour —
+   * the evidence, in place, not a separate list to cross-reference. */
+  const renderClauseText = (clause: Clause) => {
+    const terms = clause.matchedTerms ?? [];
+    if (terms.length === 0) return clause.text;
+    return splitByMatchedTerms(clause.text, terms).map((segment, i) =>
+      segment.matched ? (
+        <span key={i} className={`underline decoration-2 underline-offset-2 font-semibold ${getRiskUnderline(clause.riskLevel)}`}>
+          {segment.text}
+        </span>
+      ) : (
+        <span key={i}>{segment.text}</span>
+      ),
+    );
+  };
+
   /** General next steps for a risk level — guidance, not legal advice,
    *  and not specific to any one clause's wording. */
   const NEXT_STEPS: Record<RiskLevel, string> = {
@@ -586,6 +623,14 @@ export default function ContractView() {
                   <p className="text-xs text-text-secondary font-sans line-clamp-3 leading-relaxed">
                     {clause.text}
                   </p>
+                  {clause.matchedTerms && clause.matchedTerms.length > 0 && (
+                    <p className="mt-2 font-mono text-[10px] leading-relaxed">
+                      <span className="text-text-muted uppercase tracking-wider">Matched: </span>
+                      <span className={getRiskText(clause.riskLevel)}>
+                        {formatMatchedTerms(clause.matchedTerms)}
+                      </span>
+                    </p>
+                  )}
                 </Card>
                 );
               })
@@ -693,8 +738,19 @@ export default function ContractView() {
                       Original Clause
                     </span>
                     <div className="p-4 bg-background-base border border-overlay/5 rounded-lg font-sans text-sm text-text-secondary leading-relaxed select-text">
-                      {selectedClause.text}
+                      {renderClauseText(selectedClause)}
                     </div>
+                    {selectedClause.matchedTerms && selectedClause.matchedTerms.length > 0 && (
+                      <p className="font-mono text-[11px] leading-relaxed">
+                        <span className="text-text-muted uppercase tracking-wider">Matched words: </span>
+                        <span className={getRiskText(selectedClause.riskLevel)}>
+                          {formatMatchedTerms(selectedClause.matchedTerms)}
+                        </span>
+                        <span className="block mt-1 text-[10px] text-text-muted normal-case tracking-normal">
+                          The exact words that earned this risk tier, underlined above.
+                        </span>
+                      </p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -799,6 +855,14 @@ export default function ContractView() {
                           <Badge tone={getRiskTone(clause.riskLevel)}>{clause.riskLevel}</Badge>
                         </div>
                         <p className="text-xs text-text-secondary font-sans leading-relaxed">{clause.text}</p>
+                        {clause.matchedTerms && clause.matchedTerms.length > 0 && (
+                          <p className="font-mono text-[10px] leading-relaxed">
+                            <span className="text-text-muted uppercase tracking-wider">Matched: </span>
+                            <span className={getRiskText(clause.riskLevel)}>
+                              {formatMatchedTerms(clause.matchedTerms)}
+                            </span>
+                          </p>
+                        )}
                         <div>
                           <span className="text-[10px] font-mono text-text-secondary uppercase tracking-widest block mb-1">
                             Risk Explanation

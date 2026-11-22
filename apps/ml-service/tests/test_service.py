@@ -84,6 +84,16 @@ class ServiceTests(unittest.TestCase):
         plain=self.client.post('/risk-score',json={'text':'ordinary clause'}).json()
         self.assertEqual((plain['score'],plain['signals']),(18,0))
 
+    def test_responses_name_the_matched_words(self):
+        # The evidence behind the tier: exact words from the clause, not
+        # the regex that matched. A clause no rule fires on names none.
+        data=self.client.post('/classify-clause',json={'text':'indemnify for negligence'}).json()
+        self.assertEqual(data['matched'],['indemnify','negligence'])
+        scored=self.client.post('/risk-score',json={'text':'indemnify for negligence'}).json()
+        self.assertEqual(scored['matched'],['indemnify','negligence'])
+        plain=self.client.post('/classify-clause',json={'text':'ordinary clause'}).json()
+        self.assertEqual(plain['matched'],[])
+
     def test_health_reports_heuristic_mode_without_a_model(self):
         data=self.client.get('/health')
         self.assertEqual(data.status_code,200)

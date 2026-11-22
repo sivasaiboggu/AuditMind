@@ -27,6 +27,10 @@ export interface Clause {
    * score the pipeline stores and averages into the contract's overall
    * score. Absent when no score was stored for the clause. */
   riskScore?: number;
+  /** The exact words in the clause that earned its risk tier, stored by
+   * the pipeline. Absent when no rule fired (or the tier came from a
+   * model, which names no words) — never invented. */
+  matchedTerms?: string[];
   riskExplanation: string; // plain English explanation
   suggestedRedline?: string; // proposed safer alternative text
 }

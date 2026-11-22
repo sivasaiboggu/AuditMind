@@ -352,6 +352,12 @@ app.get('/contracts/:id/clauses', async (req, reply) => {
     ...(typeof c.risk_score === 'number' && Number.isFinite(c.risk_score)
       ? { riskScore: c.risk_score }
       : {}),
+    // The exact words that earned the tier, stored with the clause. Omit
+    // when nothing was stored rather than inventing evidence.
+    ...(Array.isArray(c.matched_terms) && c.matched_terms.length > 0 &&
+       c.matched_terms.every((t: unknown) => typeof t === 'string' && t !== '')
+      ? { matchedTerms: c.matched_terms }
+      : {}),
     riskExplanation: c.risk_explanation,
     suggestedRedline: c.suggested_redline
   }));

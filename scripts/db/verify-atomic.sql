@@ -40,7 +40,7 @@ DROP TRIGGER synthetic_fail_completion ON public.contracts;
 DROP FUNCTION public.synthetic_fail_completion();
 SET ROLE service_role;
 SELECT public.commit_contract_analysis('10000000-0000-0000-0000-000000000001',
- '[{"number":"1","title":"New","text":"Synthetic new","risk_level":"high","risk_explanation":"Synthetic explanation","suggested_redline":"","risk_score":60}]',60);
+ '[{"number":"1","title":"New","text":"Synthetic new","risk_level":"high","risk_explanation":"Synthetic explanation","suggested_redline":"","risk_score":60,"matched_terms":["indemnify","negligence"]}]',60);
 -- Re-delivery with another valid result must not replace the committed output.
 SELECT public.commit_contract_analysis('10000000-0000-0000-0000-000000000001',
  '[{"number":"2","title":"Duplicate","text":"Synthetic duplicate","risk_level":"low","risk_explanation":"Synthetic explanation","suggested_redline":"","risk_score":0}]',0);
@@ -48,7 +48,8 @@ RESET ROLE;
 DO $$ BEGIN
  IF (SELECT count(*) FROM public.clauses WHERE contract_id='10000000-0000-0000-0000-000000000001')<>1 OR
     (SELECT overall_risk_score FROM public.contracts WHERE name='Synthetic A')<>60 OR
-    (SELECT title FROM public.clauses WHERE contract_id='10000000-0000-0000-0000-000000000001')<>'New'
+    (SELECT title FROM public.clauses WHERE contract_id='10000000-0000-0000-0000-000000000001')<>'New' OR
+    (SELECT matched_terms FROM public.clauses WHERE contract_id='10000000-0000-0000-0000-000000000001')<>ARRAY['indemnify','negligence']
  THEN RAISE EXCEPTION 'completion or idempotency failed'; END IF;
  BEGIN
   PERFORM public.commit_contract_analysis('10000000-0000-0000-0000-000000000002','[{"title":"Bad","text":"Synthetic","risk_level":"low","risk_explanation":"","suggested_redline":"","risk_score":0}]',0);

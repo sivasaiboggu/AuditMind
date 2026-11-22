@@ -10,43 +10,58 @@
 /* is the dark set. All component colours resolve through these       */
 /* variables so no page needs hard-coded theme values.                */
 /*                                                                     */
-/* One accent (see docs/design-references-1.0.6.md): teal-700 on      */
-/* paper, teal-400 on ink. The indigo/violet pair is gone. Risk hues  */
-/* are the only other colours in the product.                          */
+/* Tokens are OKLCH triplets (lightness, chroma, hue); the hex each   */
+/* one was converted from is in docs/DESIGN_SYSTEM.md, with the       */
+/* contrast table. One accent (see docs/design-references-1.0.6.md):  */
+/* teal-700 on paper, teal-400 on ink. The indigo/violet pair is      */
+/* gone. Risk hues are the only other colours in the product, and     */
+/* they are per-theme too: the bright hues fail WCAG AA as small text */
+/* on white, so light mode uses the darker -700 step for text while   */
+/* dark mode keeps the bright step. Chart fills keep the bright hexes */
+/* (see dashboard.tsx) — fills are not text.                         */
 /* ------------------------------------------------------------------ */
 
 :root {
   color-scheme: light;
-  --bg-base: 250 250 247;
-  --bg-panel: 255 255 255;
-  --bg-hover: 243 243 240;
-  --text-primary: 25 28 27;
-  --text-secondary: 70 76 74;
-  --text-muted: 110 116 113;
+  --bg-base: 0.984 0.004 106.5;
+  --bg-panel: 1.000 0.000 89.9;
+  --bg-hover: 0.963 0.004 106.5;
+  --text-primary: 0.223 0.005 173.9;
+  --text-secondary: 0.410 0.008 174.0;
+  --text-muted: 0.553 0.009 164.7;
   /* Translucent tint: dark slate on light backgrounds. */
-  --overlay: 15 23 42;
+  --overlay: 0.208 0.040 265.8;
   /* One accent, per theme. */
-  --accent: 15 118 110;
+  --accent: 0.511 0.086 186.4;
+  /* Risk hues, per theme (see header note). */
+  --risk-critical: 0.505 0.190 27.5;
+  --risk-high: 0.553 0.174 38.4;
+  --risk-medium: 0.555 0.146 49.0;
+  --risk-low: 0.508 0.105 165.6;
   /* Focus ring and elevation, shared by every interactive element. */
-  --ring: 15 118 110;
-  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.05), 0 4px 16px rgb(15 23 42 / 0.05);
+  --ring: 0.511 0.086 186.4;
+  --shadow-card: 0 1px 2px oklch(0.208 0.040 265.8 / 0.05), 0 4px 16px oklch(0.208 0.040 265.8 / 0.05);
 }
 
 .dark {
   color-scheme: dark;
-  --bg-base: 16 20 20;
-  --bg-panel: 23 29 28;
-  --bg-hover: 30 38 36;
+  --bg-base: 0.187 0.006 196.6;
+  --bg-panel: 0.224 0.009 184.4;
+  --bg-hover: 0.260 0.012 178.5;
   /* Primary body text keeps the hierarchy (secondary/muted stay dimmer)
    * while remaining readable on near-black. */
-  --text-primary: 233 239 236;
-  --text-secondary: 160 170 167;
-  --text-muted: 125 134 131;
+  --text-primary: 0.947 0.008 164.9;
+  --text-secondary: 0.729 0.012 176.2;
+  --text-muted: 0.612 0.011 174.0;
   /* Translucent tint: white on dark backgrounds. */
-  --overlay: 255 255 255;
-  --accent: 45 212 191;
-  --ring: 45 212 191;
-  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 4px 16px rgb(0 0 0 / 0.35);
+  --overlay: 1.000 0.000 89.9;
+  --accent: 0.785 0.133 181.9;
+  --risk-critical: 0.637 0.208 25.3;
+  --risk-high: 0.705 0.187 47.6;
+  --risk-medium: 0.795 0.162 86.0;
+  --risk-low: 0.696 0.149 162.5;
+  --ring: 0.785 0.133 181.9;
+  --shadow-card: 0 1px 2px oklch(0 0 0 / 0.4), 0 4px 16px oklch(0 0 0 / 0.35);
 }
 
 @layer utilities {
@@ -72,14 +87,14 @@
     min-width: 1.25rem;
     padding: 0.1rem 0.35rem;
     border-radius: 0.375rem;
-    border: 1px solid rgb(var(--overlay) / 0.12);
+    border: 1px solid oklch(var(--overlay) / 0.12);
     border-bottom-width: 2px;
-    background: rgb(var(--bg-panel));
+    background: oklch(var(--bg-panel));
     font-family: 'IBM Plex Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
     font-size: 0.625rem;
     font-weight: 600;
     line-height: 1.4;
-    color: rgb(var(--text-muted));
+    color: oklch(var(--text-muted));
   }
 
   .body-md {
@@ -104,7 +119,7 @@
   /* Visible keyboard focus everywhere; inputs keep their own focus ring
      as well, this outline sits 2px outside it. */
   :where(a, button, input, select, textarea, [role="button"], [tabindex]):focus-visible {
-    outline: 2px solid rgb(var(--ring));
+    outline: 2px solid oklch(var(--ring));
     outline-offset: 2px;
   }
 
@@ -126,16 +141,16 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: rgb(var(--bg-base) / 0.5);
+  background: oklch(var(--bg-base) / 0.5);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgb(var(--overlay) / 0.15);
+  background: oklch(var(--overlay) / 0.15);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgb(var(--accent) / 0.5);
+  background: oklch(var(--accent) / 0.5);
 }
 
 /* Precise transition styles */
