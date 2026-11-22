@@ -14,6 +14,16 @@ export interface Contract {
   overallRiskScore: number; // 0 to 100
   createdAt: string;
   updatedAt: string;
+  reviewProgress?: { total: number; decided: number };
+}
+
+export const REVIEW_OUTCOMES = ['accepted', 'revise', 'escalate'] as const;
+export type ReviewOutcome = typeof REVIEW_OUTCOMES[number];
+
+export interface ClauseReview {
+  outcome: ReviewOutcome;
+  note: string;
+  updatedAt: string;
 }
 
 export interface Clause {
@@ -33,6 +43,7 @@ export interface Clause {
   matchedTerms?: string[];
   riskExplanation: string; // plain English explanation
   suggestedRedline?: string; // proposed safer alternative text
+  review?: ClauseReview;
 }
 
 export interface RiskReport {

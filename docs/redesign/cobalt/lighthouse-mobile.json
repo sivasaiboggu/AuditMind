@@ -1,0 +1,60 @@
+{
+  "lighthouseVersion": "13.6.0",
+  "fetchTime": "2026-11-22T23:45:11.023Z",
+  "requestedUrl": "http://127.0.0.1:4187/",
+  "finalDisplayedUrl": "http://127.0.0.1:4187/",
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+  "settings": {
+    "formFactor": "mobile",
+    "screenEmulation": {
+      "mobile": true,
+      "width": 412,
+      "height": 823,
+      "deviceScaleFactor": 1.75,
+      "disabled": false
+    },
+    "throttlingMethod": "simulate",
+    "throttling": {
+      "rttMs": 150,
+      "throughputKbps": 1638.4,
+      "requestLatencyMs": 562.5,
+      "downloadThroughputKbps": 1474.5600000000002,
+      "uploadThroughputKbps": 675,
+      "cpuSlowdownMultiplier": 4
+    }
+  },
+  "categories": {
+    "performance": 1,
+    "accessibility": 1,
+    "best-practices": 1,
+    "seo": 1,
+    "agentic-browsing": 0.5
+  },
+  "metrics": {
+    "first-contentful-paint": {
+      "numericValue": 764.2851,
+      "numericUnit": "millisecond",
+      "displayValue": "0.8\u00a0s"
+    },
+    "largest-contentful-paint": {
+      "numericValue": 764.2851,
+      "numericUnit": "millisecond",
+      "displayValue": "0.8\u00a0s"
+    },
+    "speed-index": {
+      "numericValue": 764.2851,
+      "numericUnit": "millisecond",
+      "displayValue": "0.8\u00a0s"
+    },
+    "total-blocking-time": {
+      "numericValue": 11,
+      "numericUnit": "millisecond",
+      "displayValue": "10\u00a0ms"
+    },
+    "cumulative-layout-shift": {
+      "numericValue": 0,
+      "numericUnit": "unitless",
+      "displayValue": "0"
+    }
+  }
+}

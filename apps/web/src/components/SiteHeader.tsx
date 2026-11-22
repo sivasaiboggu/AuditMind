@@ -4,9 +4,9 @@ import { useTheme } from '../lib/theme';
 
 export function Brand({ to = '/' }: { to?: string }) {
   return (
-    <Link to={to} className="inline-flex min-h-11 shrink-0 items-center gap-2 text-[1.375rem] font-bold tracking-[-.055em]" aria-label="AuditMind home">
+    <Link to={to} className="inline-flex min-h-11 shrink-0 items-center gap-2 text-[1.5rem] font-semibold tracking-[-.045em]" aria-label="AuditMind home">
       <svg className="size-7 text-accent-brand" viewBox="0 0 28 28" fill="none" aria-hidden="true">
-        <path d="M9 4H4V24H9M19 4H24V24H19M9 14H19M12 9H19M9 19H16" stroke="currentColor" strokeWidth="1.65" />
+        <path d="M5 5h16v18H5z M9 9h8m-8 5h8m-8 5h5 M21 5h3v6l-3 2" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
       </svg>
       AuditMind
     </Link>
@@ -34,7 +34,7 @@ export function SiteHeader({ signIn = false }: { signIn?: boolean }) {
         <Brand />
         <div className="flex items-center gap-2 sm:gap-4">
           <ThemeControl />
-          {signIn && <Link to="/login" className="action action-outline">Sign in <ArrowUpRight size={16} aria-hidden="true" /></Link>}
+          {signIn && <Link to="/login" className="action action-ghost">Sign in <ArrowUpRight size={16} aria-hidden="true" /></Link>}
         </div>
       </div>
     </header>

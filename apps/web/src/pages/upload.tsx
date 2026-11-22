@@ -2,6 +2,7 @@ import { workspaceGuard } from '../lib/workspace-guard';
 import { authenticatedFetch, sendAuthenticated } from '../lib/api';
 import { ACCEPTED_EXTENSIONS, FILE_SIZE_LIMIT_BYTES, FILE_SIZE_LIMIT_MB } from '../lib/constants';
 import { useState, useEffect, useRef } from 'react';
+import type { CSSProperties } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useContractStore } from '../store/contractStore';
 import { useAuth } from '../lib/auth-context';
@@ -235,7 +236,9 @@ export default function UploadPage() {
                         <p className="font-semibold" role="status">{progress.message}</p>
                         {percent !== undefined && <span className="font-mono tnum">{percent}%</span>}
                       </div>
-                      <progress className="upload-progress" aria-label="Contract analysis progress" max={100} value={percent} />
+                      <div className="upload-progress" role="progressbar" aria-label="Contract analysis progress" aria-valuenow={percent}>
+                        <span style={{ '--progress': (percent ?? 0) / 100 } as CSSProperties} />
+                      </div>
                       <p className="text-sm text-text-secondary">Keep this page open to go straight to the review.</p>
                     </div>
                   ) : (

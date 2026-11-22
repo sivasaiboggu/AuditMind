@@ -8,9 +8,9 @@ import AxeBuilder from '@axe-core/playwright';
 import { WebSocketServer } from 'ws';
 import { CLAUSES, CONTRACTS, NDA_ID } from '../fixtures/review-browser.mjs';
 
-const [phase = 'after', build = 'apps/web/dist', out = 'docs/redesign/screenshots'] = process.argv.slice(2);
+const [phase = 'after', build = 'apps/web/dist', out = 'docs/redesign/cobalt/screenshots'] = process.argv.slice(2);
 assert.ok(['before', 'after', 'verify'].includes(phase), 'Usage: npm run shots -- before|after|verify BUILD_DIR OUTPUT_DIR');
-const old = phase === 'before';
+const baseline = phase === 'before';
 const dist = path.resolve(build);
 const outDir = path.resolve(out);
 const apiPort = 9462;
@@ -22,6 +22,8 @@ const session = {
   access_token: 'synthetic-access', refresh_token: 'synthetic-refresh', token_type: 'bearer',
   expires_at: 2_145_916_800, expires_in: 3600, user,
 };
+const decisions = new Map();
+let rejectNextDecision = false;
 const files = new Map(Object.entries({
   '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.png': 'image/png',
   '.woff2': 'font/woff2', '.woff': 'font/woff', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json',
@@ -35,11 +37,41 @@ function sendJson(res, status, value) {
 const api = createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'authorization, content-type');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   if (req.method === 'OPTIONS') { res.writeHead(204).end(); return; }
   if (req.headers.authorization !== 'Bearer synthetic-access') { sendJson(res, 401, {}); return; }
-  if (req.method === 'GET' && req.url === '/contracts') sendJson(res, 200, CONTRACTS);
-  else if (req.method === 'GET' && req.url === `/contracts/${NDA_ID}/clauses`) sendJson(res, 200, CLAUSES);
+  const url = new URL(req.url, 'http://localhost');
+  if (req.method === 'GET' && url.pathname === '/contracts') {
+    const counts = { total: CLAUSES.length, decided: decisions.size };
+    sendJson(res, 200, CONTRACTS.map((contract) => contract.id === NDA_ID
+      ? { ...contract, reviewProgress: counts }
+      : contract));
+  } else if (req.method === 'GET' && url.pathname === `/contracts/${NDA_ID}/clauses`) {
+    const offset = Number(url.searchParams.get('offset') ?? 0);
+    const limit = Number(url.searchParams.get('limit') ?? 50);
+    sendJson(res, 200, CLAUSES.slice(offset, offset + limit).map((clause) => ({
+      ...clause, review: decisions.get(clause.id),
+    })));
+  } else if (req.method === 'PUT' && url.pathname.startsWith(`/contracts/${NDA_ID}/review/`)) {
+    if (rejectNextDecision) {
+      rejectNextDecision = false;
+      req.resume();
+      sendJson(res, 503, { error: 'Synthetic write failure' });
+      return;
+    }
+    const clause = url.pathname.split('/').at(-1);
+    if (!CLAUSES.some(({ id }) => id === clause)) { sendJson(res, 404, {}); return; }
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk) => { body += chunk; });
+    req.on('end', () => {
+      const decision = JSON.parse(body);
+      const review = decision.outcome ? { ...decision, updatedAt: clock.toISOString() } : null;
+      if (review) decisions.set(clause, review);
+      else decisions.delete(clause);
+      sendJson(res, 200, { review });
+    });
+  }
   else if (req.method === 'POST' && req.url === '/contracts/upload') {
     req.resume();
     req.once('end', () => sendJson(res, 201, CONTRACTS[0]));
@@ -116,17 +148,13 @@ async function open({ authed = false, width = 1440, theme = 'light' } = {}) {
 }
 
 async function route(page, pathname) {
-  if (old && pathname.startsWith('/contract/')) {
-    await page.goto(base);
-    await page.getByRole('heading', { name: 'Dashboard', exact: true }).waitFor();
-    await page.evaluate((target) => { history.pushState({}, '', target); dispatchEvent(new PopStateEvent('popstate')); }, pathname);
-  } else await page.goto(base + pathname);
+  await page.goto(base + pathname);
 }
 
 async function check(page, name) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   assert.equal(overflow, false, `Horizontal overflow at ${name}`);
-  const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+  const result = await new AxeBuilder({ page }).analyze();
   for (const finding of result.violations) {
     auditFailures.push(`${name}: ${finding.id}: ${finding.nodes.map((node) => node.target.join(' ')).join(', ')}`);
   }
@@ -138,7 +166,7 @@ async function shot(page, name) {
     window.scrollTo(0, 0);
   });
   if (phase !== 'verify') await page.screenshot({ path: path.join(outDir, `${phase}-${name}.png`), fullPage: true, animations: 'disabled' });
-  if (!old) await check(page, name);
+  if (!baseline) await check(page, name);
   console.log(`${phase} ${name}`);
 }
 
@@ -148,11 +176,20 @@ async function publicScreens(options = {}) {
   await route(page, '/');
   await page.getByRole('heading', { level: 1 }).waitFor();
   await shot(page, `landing${suffix}`);
+  if (phase === 'after' && !options.width && !options.theme) {
+    await page.setViewportSize({ width: 1200, height: 630 });
+    await page.screenshot({ path: path.join(outDir, 'after-social-preview.png'), animations: 'disabled' });
+    await page.setViewportSize({ width: 1440, height: 960 });
+  }
+  if (!baseline) {
+    await page.getByRole('button', { name: /Governing law/ }).click();
+    await page.getByRole('heading', { name: 'Governing law', exact: true }).waitFor();
+  }
   if (options.width && phase !== 'verify') { await page.context().close(); return; }
   await route(page, '/login');
   await page.locator('input[type=email]').waitFor();
   await shot(page, `login${suffix}`);
-  if (!old) {
+  if (!baseline) {
     await page.getByRole('button', { name: 'Send sign-in code' }).click();
     await page.getByRole('alert').filter({ hasText: 'Enter a valid email address' }).waitFor();
     await page.getByLabel('Email address').fill('reviewer@example.test');
@@ -165,7 +202,7 @@ async function publicScreens(options = {}) {
   await route(page, '/missing-page');
   await page.getByRole('heading', { name: 'Page not found', exact: false }).waitFor();
   await shot(page, `not-found${suffix}`);
-  if (!old) {
+  if (!baseline) {
     for (const label of ['Privacy', 'Terms of use']) {
       await page.getByRole('link', { name: label }).click();
       await page.getByRole('heading', { name: label, level: 1 }).waitFor();
@@ -182,7 +219,11 @@ async function workspaceScreens(options = {}) {
   await page.getByText('Mutual NDA — Acme Corp', { exact: true }).waitFor();
   await shot(page, `dashboard${suffix}`);
 
-  if (!old && !options.width) {
+  if (!baseline && !options.width) {
+    await page.getByRole('button', { name: 'To review', exact: true }).click();
+    await page.getByRole('link', { name: /mutual nda/i }).waitFor();
+    assert.equal(await page.getByText('Employment Agreement — Delta').count(), 0);
+    await page.getByRole('button', { name: 'All contracts', exact: true }).click();
     await page.getByRole('searchbox', { name: 'Search contracts by name' }).fill('Gamma');
     await page.getByRole('link', { name: /vendor agreement/i }).waitFor();
     assert.equal(await page.getByRole('link', { name: /mutual nda/i }).count(), 0);
@@ -205,7 +246,7 @@ async function workspaceScreens(options = {}) {
   await page.getByText('unlimited liability', { exact: true }).last().waitFor();
   await shot(page, `analysis${suffix}`);
 
-  if (!old) {
+  if (!baseline) {
     await section.focus();
     await page.keyboard.press('ArrowUp');
     assert.equal(await page.getByRole('button', { name: /Select clause.*Governing Law/i }).getAttribute('aria-pressed'), 'true');
@@ -219,24 +260,26 @@ async function workspaceScreens(options = {}) {
     await page.getByRole('button', { name: 'Export report' }).click();
     assert.ok((await download).suggestedFilename().endsWith('.md'));
   }
+  if (!baseline && !options.width && !options.theme) await verifyDecisions(page, section);
   if (options.width && phase !== 'verify') { await page.context().close(); return; }
 
   await page.getByRole('button', { name: 'Compare', exact: true }).click();
   await page.getByRole('button', { name: /Add.*Indemnification/i }).click();
   await page.getByRole('button', { name: /Add.*Limitation of Liability/i }).click();
-  await page.getByText(old ? 'Clause Comparison' : 'Compare clauses', { exact: true }).waitFor();
+  await page.getByText('Compare clauses', { exact: true }).waitFor();
   await shot(page, `comparison${suffix}`);
 
-  await page.getByRole('button', { name: old ? 'AI Chat' : 'Chat', exact: true }).click();
+  await page.getByRole('button', { name: 'Chat', exact: true }).click();
+  await page.getByText('Connected', { exact: true }).waitFor({ timeout: 8000 });
   await page.getByRole('textbox', { name: 'Ask a question about this contract' }).fill('Which clause has the highest risk?');
   await page.getByRole('button', { name: 'Send message' }).click();
   await page.getByText(answer, { exact: true }).waitFor();
   await shot(page, `chat${suffix}`);
 
   await route(page, '/upload');
-  await page.getByRole('heading', { name: old ? 'Upload contract' : 'Upload a contract' }).waitFor();
+  await page.getByRole('heading', { name: 'Upload a contract' }).waitFor();
   await shot(page, `upload${suffix}`);
-  if (!old) {
+  if (!baseline) {
     const input = page.locator('input[type=file]');
     await input.setInputFiles({ name: 'wrong.exe', mimeType: 'text/plain', buffer: Buffer.from('test') });
     await page.getByRole('alert').waitFor();
@@ -248,12 +291,67 @@ async function workspaceScreens(options = {}) {
   await page.context().close();
 }
 
+async function verifyDecisions(page, section) {
+  const finding = page.getByRole('heading', { name: 'Limitation of Liability', exact: true });
+  await page.getByRole('button', { name: 'Document', exact: true }).click();
+  await page.getByRole('heading', { name: 'Read the document' }).waitFor();
+  await shot(page, 'document');
+  await page.getByRole('link', { name: 'Jump to selected clause' }).click();
+  await page.getByRole('button', { name: /Open finding for Section 5/ }).click();
+  await finding.waitFor();
+
+  const decision = page.getByLabel('Decision', { exact: true });
+  const note = page.getByLabel('Reviewer note');
+  const save = page.getByRole('button', { name: 'Save decision' });
+  await decision.selectOption('revise');
+  await save.click();
+  assert.equal(await note.evaluate((node) => node.validity.valueMissing), true);
+  await note.fill('Ask for a fixed liability cap.');
+  rejectNextDecision = true;
+  await save.click();
+  await page.getByRole('alert').filter({ hasText: 'Could not save' }).waitFor();
+  assert.equal(await note.inputValue(), 'Ask for a fixed liability cap.');
+  await save.click();
+  await page.getByText('Decision saved.', { exact: true }).waitFor();
+  await page.getByText('1 of 6 decided', { exact: true }).waitFor();
+  await shot(page, 'decision');
+  await page.reload();
+  await finding.waitFor();
+  assert.equal(await decision.inputValue(), 'revise');
+  assert.equal(await note.inputValue(), 'Ask for a fixed liability cap.');
+
+  const findingLocation = new URL(page.url()).pathname + new URL(page.url()).search;
+  await route(page, '/dashboard');
+  await page.getByText('1 of 6 decided', { exact: true }).waitFor();
+  await route(page, findingLocation);
+  await finding.waitFor();
+
+  const report = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export report' }).click();
+  const markdown = await readFile(await (await report).path(), 'utf8');
+  assert.match(markdown, /Review decision: Request revision/);
+  assert.match(markdown, /Ask for a fixed liability cap/);
+
+  await page.getByRole('button', { name: 'Next undecided' }).click();
+  await page.getByRole('heading', { name: 'Notices', exact: true }).waitFor();
+  await page.getByLabel('Undecided only').check();
+  assert.equal(await section.count(), 0);
+  await page.getByLabel('Undecided only').uncheck();
+  await section.click();
+  await page.getByRole('button', { name: 'Reopen', exact: true }).click();
+  await page.getByText('Clause reopened.', { exact: true }).waitFor();
+  await page.getByText('0 of 6 decided', { exact: true }).waitFor();
+  await page.reload();
+  await finding.waitFor();
+  assert.equal(await page.getByLabel('Decision', { exact: true }).inputValue(), '');
+}
+
 async function darkScreens() {
   const page = await open({ authed: true, theme: 'dark' });
   await route(page, contractPath);
   await page.getByRole('button', { name: /Select clause.*Limitation of Liability/i }).click();
   await shot(page, 'analysis-dark');
-  if (old) { await page.context().close(); return; }
+  if (baseline) { await page.context().close(); return; }
   await page.getByRole('button', { name: 'Switch to light theme' }).click();
   assert.equal(await page.evaluate(() => document.documentElement.classList.contains('dark')), false);
   assert.equal(await page.evaluate(() => localStorage.getItem('auditmind-theme')), 'light');
@@ -273,8 +371,10 @@ try {
   if (phase === 'verify') {
     await publicScreens({ theme: 'dark' });
     await workspaceScreens({ theme: 'dark' });
-    await publicScreens({ width: 320 });
-    await workspaceScreens({ width: 320 });
+    for (const width of [320, 768]) {
+      await publicScreens({ width });
+      await workspaceScreens({ width });
+    }
   }
   assert.deepEqual(errors, [], 'Uncaught browser errors');
   assert.deepEqual(auditFailures, [], 'Automated accessibility findings');

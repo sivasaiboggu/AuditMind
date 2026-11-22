@@ -1,4 +1,5 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import vm from 'node:vm';import ts from 'typescript';import {createRequire} from 'node:module';
+import { findReviewClause, readClausePages } from '../../web/src/lib/review.ts';
 const require=createRequire(import.meta.url);
 function store(){const context={exports:{},require};vm.runInNewContext(ts.transpileModule(fs.readFileSync(new URL('../../web/src/store/contractStore.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,context);return context.exports.useContractStore;}
 test('switching contracts clears clauses, chat, report, session and progress',()=>{
@@ -10,9 +11,9 @@ test('clearing contract clears private chat context',()=>{const s=store();s.setS
 function routeEffect(fetch,ownerCurrent=()=>true){
  const source=fs.readFileSync(new URL('../../web/src/pages/contract-view.tsx',import.meta.url),'utf8');
  const start=source.indexOf('  useEffect(() => {',source.indexOf('// Scope each load'));
- const end=source.indexOf('\n\n  // 2. Configure',start);let effect;const calls=[];
- const context={user:{id:'owner'},workspaceGuard:()=>ownerCurrent,useEffect:fn=>effect=fn,id:'a',useContractStore:{getState:()=>({contracts:[{id:'a'}]})},authenticatedFetch:fetch,API_URL:'synthetic',console:{error(){}},navigate:x=>calls.push(['navigate',x])};
- for(const name of ['setClausesLoading','setLoadError','setSelectedClause','setChatInput','setIsChatGenerating','setWsConnected','setCopiedId','setActiveTab','setActiveContract','setActiveClauses','setContracts','setClauseQuery','setRiskFilter','setCompareMode','setCompareIds'])context[name]=value=>calls.push([name,value]);
+ const end=source.indexOf('\n\n  async function saveDecision',start);let effect;const calls=[];
+ const context={user:{id:'owner'},workspaceGuard:()=>ownerCurrent,useEffect:fn=>effect=fn,id:'a',reviewScope:{current:null},readClausePages,useContractStore:{getState:()=>({contracts:[{id:'a',status:'completed'}]})},authenticatedFetch:fetch,API_URL:'synthetic',console:{error(){}},navigate:x=>calls.push(['navigate',x])};
+ for(const name of ['setClausesLoading','setLoadError','setSaveBusy','setChatInput','setIsChatGenerating','setWsConnected','setCopiedId','setActiveTab','setActiveContract','setActiveClauses','setContracts','setClauseQuery','setRiskFilter','setReviewFilter','setCompareMode','setCompareIds'])context[name]=value=>calls.push([name,value]);
  vm.runInNewContext(ts.transpileModule(source.slice(start,end),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText,context);return {cleanup:effect(),calls};
 }
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
@@ -25,7 +26,7 @@ test('cleanup during JSON parsing also blocks late context writes',async()=>{
  resolve([{id:'private-a'}]);await tick();assert.equal(calls.length,count);
 });
 test('current empty clause response resets selection instead of retaining stale clause',async()=>{
- const {calls}=routeEffect(async()=>({ok:true,json:async()=>[]}));await tick();assert.ok(calls.some(([name,value])=>name==='setSelectedClause' && value===null));assert.deepEqual(calls.at(-1),['setClausesLoading',false]);
+ const {calls}=routeEffect(async()=>({ok:true,json:async()=>[]}));await tick();const selectedContext=calls.findLast(([name])=>name==='setActiveClauses')[1];assert.equal(findReviewClause(selectedContext,'stale-clause'),undefined);assert.deepEqual(calls.at(-1),['setClausesLoading',false]);
 });
 test('account switch clears all private workspace data',()=>{
  const s=store();s.setState({user:{id:'a'},contracts:[{id:'private'}],activeContract:{id:'a'},chatMessages:[{message:'private'}],activeClauses:[{id:'private'}],isAnalyzing:true});
