@@ -222,15 +222,15 @@ async function workspaceScreens(options = {}) {
   if (!baseline && !options.width) {
     await page.getByRole('button', { name: 'To review', exact: true }).click();
     await page.getByRole('link', { name: /mutual nda/i }).waitFor();
-    assert.equal(await page.getByText('Employment Agreement — Delta').count(), 0);
+    await page.getByText('Employment Agreement — Delta').waitFor({ state: 'hidden' });
     await page.getByRole('button', { name: 'All contracts', exact: true }).click();
     await page.getByRole('searchbox', { name: 'Search contracts by name' }).fill('Gamma');
     await page.getByRole('link', { name: /vendor agreement/i }).waitFor();
-    assert.equal(await page.getByRole('link', { name: /mutual nda/i }).count(), 0);
+    await page.getByRole('link', { name: /mutual nda/i }).waitFor({ state: 'hidden' });
     await page.getByRole('button', { name: 'Clear', exact: true }).click();
     await page.getByLabel('Filter by risk level').selectOption('high');
     await page.getByRole('link', { name: /mutual nda/i }).waitFor();
-    assert.equal(await page.getByRole('link', { name: /vendor agreement/i }).count(), 0);
+    await page.getByRole('link', { name: /vendor agreement/i }).waitFor({ state: 'hidden' });
     await page.getByRole('button', { name: 'Clear', exact: true }).click();
     await page.getByLabel('Sort contracts').selectOption('risk-desc');
     await page.getByRole('button', { name: /Delete Lease/ }).click();
@@ -249,12 +249,12 @@ async function workspaceScreens(options = {}) {
   if (!baseline) {
     await section.focus();
     await page.keyboard.press('ArrowUp');
-    assert.equal(await page.getByRole('button', { name: /Select clause.*Governing Law/i }).getAttribute('aria-pressed'), 'true');
+    await page.getByRole('button', { name: /Select clause.*Governing Law/i }).and(page.locator('[aria-pressed="true"]')).waitFor();
     await page.keyboard.press('/');
     assert.equal(await page.getByRole('searchbox', { name: 'Search clauses' }).evaluate((el) => el === document.activeElement), true);
     await page.getByRole('searchbox', { name: 'Search clauses' }).fill('confidentiality');
     await page.keyboard.press('Escape');
-    assert.equal(await page.getByRole('searchbox', { name: 'Search clauses' }).inputValue(), '');
+    await page.waitForFunction(() => document.querySelector('input[aria-label="Search clauses"]')?.value === '');
     await section.click();
     const download = page.waitForEvent('download');
     await page.getByRole('button', { name: 'Export report' }).click();
@@ -335,7 +335,7 @@ async function verifyDecisions(page, section) {
   await page.getByRole('button', { name: 'Next undecided' }).click();
   await page.getByRole('heading', { name: 'Notices', exact: true }).waitFor();
   await page.getByLabel('Undecided only').check();
-  assert.equal(await section.count(), 0);
+  await section.waitFor({ state: 'hidden' });
   await page.getByLabel('Undecided only').uncheck();
   await section.click();
   await page.getByRole('button', { name: 'Reopen', exact: true }).click();
