@@ -232,7 +232,7 @@ export async function processContract(
     const overallScore = rawClauses.length > 0 ? Math.round(riskSum / rawClauses.length) : 0;
 
     // 4. Update Database
-    deps.progress(contractId, 'generating', 90, 'Syncing details to secure storage vaults...');
+    deps.progress(contractId, 'generating', 90, 'Saving results…');
     
     // One transaction replaces old partial rows and commits the status/score.
     // This requires the reviewed source migration before deploying this API.

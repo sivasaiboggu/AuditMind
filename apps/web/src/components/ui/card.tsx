@@ -1,11 +1,11 @@
 import type { HTMLAttributes } from 'react';
 import { cn } from '../../lib/utils';
 
-/** Glass panel card — the app's standard surface. */
+/** Solid panel card — the app's standard surface. No glass, no blur. */
 export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn('glass-panel rounded-xl border border-overlay/5 shadow-card', className)}
+      className={cn('bg-background-panel rounded-xl border border-overlay/5 shadow-card', className)}
       {...props}
     />
   );

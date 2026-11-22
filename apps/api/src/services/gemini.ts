@@ -143,6 +143,54 @@ function escapeRegExp(word: string): string {
 }
 
 /**
+ * Plain-text reply when the explanation provider cannot stream: the most
+ * relevant contract lines for the question, found by keyword overlap, or
+ * the first few provisions when nothing matches. Pure, so the wording
+ * (no emoji, no invented assessment) is unit-tested without a provider.
+ */
+export function buildLocalSearchReply(
+  userQuery: string,
+  contractContext: string,
+  isQuotaError: boolean,
+): string {
+  const lines = contractContext.split(/\n+/).map((l) => l.trim()).filter((l) => l.length > 15);
+
+  const keywords = userQuery
+    .toLowerCase()
+    .replace(/[?:!.,;'"()\[\]]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length >= 3 && !['what', 'when', 'where', 'with', 'from', 'this', 'that', 'then', 'have', 'does', 'clause', 'section', 'the', 'and', 'for'].includes(w));
+
+  // Rank lines by how many distinct query keywords they contain (whole
+  // words only, so "law" no longer matches "flaw"), best first.
+  const ranked: { line: string; hits: number }[] = [];
+  if (keywords.length > 0) {
+    for (const line of lines) {
+      const lower = line.toLowerCase();
+      const hits = keywords.filter((word) => new RegExp(`\\b${escapeRegExp(word)}\\b`).test(lower)).length;
+      if (hits > 0) ranked.push({ line, hits });
+    }
+    ranked.sort((a, b) => b.hits - a.hits);
+  }
+  const matchingLines = ranked.slice(0, 4).map((r) => r.line);
+
+  let response = isQuotaError
+    ? 'Chat is in local search mode (the explanation service quota was reached).'
+    : 'Chat is in local search mode (the explanation service could not be reached).';
+
+  if (matchingLines.length > 0) {
+    response += `\n\nBased on a local scan of this contract, here are the most relevant provisions for your query:\n\n${matchingLines.map((line, i) => `${i + 1}. ${line}`).join('\n\n')}`;
+    response += '\n\nFor a full answer, add a working GEMINI_API_KEY in apps/api/.env (get one at https://aistudio.google.com/).';
+  } else {
+    // Show the first few clauses as baseline context
+    const baseline = lines.slice(0, 3);
+    response += `\n\nI scanned the contract text but couldn't find an exact match for your query. Here are the primary provisions of this agreement:\n\n${baseline.map((line, i) => `${i + 1}. ${line}`).join('\n\n')}`;
+    response += '\n\nFor a full answer, add a working GEMINI_API_KEY in apps/api/.env (get one at https://aistudio.google.com/).';
+  }
+  return response;
+}
+
+/**
  * Streams a chat reply over WebSocket.
  * Uses gemini-2.5-flash for speed.
  */
@@ -193,49 +241,11 @@ export async function streamChatWithGemini(
 
     // Determine the latest user query from the messages array
     const userQuery = [...messages].reverse().find(m => m?.role === 'user')?.content || '';
-    const lowercaseQuery = userQuery.toLowerCase();
-
-    // Find matching sections in the contract context using keyword intersection
-    const lines = contractContext.split(/\n+/).map(l => l.trim()).filter(l => l.length > 15);
-
-    const keywords = lowercaseQuery
-      .replace(/[?:!.,;'"()\[\]]/g, ' ')
-      .split(/\s+/)
-      .filter(w => w.length >= 3 && !['what', 'when', 'where', 'with', 'from', 'this', 'that', 'then', 'have', 'does', 'clause', 'section', 'the', 'and', 'for'].includes(w));
-
-    // Rank lines by how many distinct query keywords they contain (whole
-    // words only, so "law" no longer matches "flaw"), best first.
-    const ranked: { line: string; hits: number }[] = [];
-    if (keywords.length > 0) {
-      for (const line of lines) {
-        const lower = line.toLowerCase();
-        const hits = keywords.filter(word => new RegExp(`\\b${escapeRegExp(word)}\\b`).test(lower)).length;
-        if (hits > 0) ranked.push({ line, hits });
-      }
-      ranked.sort((a, b) => b.hits - a.hits);
-    }
-    const matchingLines = ranked.slice(0, 4).map(r => r.line);
 
     // Check if the error is a quota/auth error (403) vs a real crash
     const isQuotaError = error?.response?.status === 403 || error?.response?.status === 429 || String(error?.message).includes('403') || String(error?.message).includes('429');
 
-    let response = '';
-
-    if (isQuotaError) {
-      response = `⚠️ AI Chat is currently in Local Search Mode (Gemini API quota reached).`;
-    } else {
-      response = `⚠️ AI Chat is currently in Local Search Mode (connection error).`;
-    }
-
-    if (matchingLines.length > 0) {
-      response += `\n\nBased on a local scan of this contract, here are the most relevant provisions for your query:\n\n${matchingLines.map((line, i) => `${i + 1}. ${line}`).join('\n\n')}`;
-      response += `\n\nFor deeper AI-powered analysis, please update your GEMINI_API_KEY in apps/api/.env with an active key from https://aistudio.google.com/`;
-    } else {
-      // Show the first few clauses as baseline context
-      const baseline = lines.slice(0, 3);
-      response += `\n\nI scanned the contract text but couldn't find an exact match for your query. Here are the primary provisions of this agreement:\n\n${baseline.map((line, i) => `${i + 1}. ${line}`).join('\n\n')}`;
-      response += `\n\nFor full AI-powered Q&A, update your GEMINI_API_KEY in apps/api/.env with an active key from https://aistudio.google.com/`;
-    }
+    const response = buildLocalSearchReply(userQuery, contractContext, isQuotaError);
 
     // Stream the response token by token for smooth UX
     const words = response.split(' ');
@@ -248,9 +258,11 @@ export async function streamChatWithGemini(
 
 /**
  * Validates whether the document content looks like a legal contract/agreement.
- * Uses legal keyword density as a fast heuristic.
+ * Uses legal keyword density as a fast heuristic. Keywords match on whole
+ * words only: substring matching counted "marshall" as "shall" and
+ * "partying" as "party", so ordinary prose tripped the contract check.
  */
-function validateContractHeuristic(text: string): { isContract: boolean; message: string } {
+export function validateContractHeuristic(text: string): { isContract: boolean; message: string } {
   const lowercase = text.toLowerCase();
   const legalKeywords = [
     'agreement', 'contract', 'hereby', 'indemnify', 'indemnification',
@@ -260,7 +272,7 @@ function validateContractHeuristic(text: string): { isContract: boolean; message
   ];
   let matches = 0;
   for (const kw of legalKeywords) {
-    if (lowercase.includes(kw)) {
+    if (new RegExp(`\\b${escapeRegExp(kw)}\\b`).test(lowercase)) {
       matches++;
     }
   }

@@ -5,11 +5,14 @@ import WebSocket from 'ws';
 import { once } from 'node:events';
 import { buildApp } from '../dist/app.js';
 
-function isolatedStore({storageFails = false, metadataFailsOnce = false, processing = false, missingPath = false, ownershipReadFails = false, insertFails = false, insertUnknown = false, clauseReadFails = false, clauseRiskScore} = {}) {
+function isolatedStore({storageFails = false, metadataFailsOnce = false, processing = false, missingPath = false, ownershipReadFails = false, insertFails = false, insertUnknown = false, clauseReadFails = false, clauseRiskScore, scoreOverrides} = {}) {
   const rows = [
     { id: 'contract-a', user_id: 'user-a', name: 'Synthetic A', file_path: 'a.txt', status: 'completed' },
     { id: 'contract-b', user_id: 'user-b', name: 'Synthetic B', file_path: 'b.txt', status: 'completed' },
   ];
+  if (scoreOverrides) for (const row of rows) {
+    if (Object.prototype.hasOwnProperty.call(scoreOverrides, row.id)) row.overall_risk_score = scoreOverrides[row.id];
+  }
   if(processing) rows[0].status='processing';
   if(missingPath) rows[0].file_path=null;
   let deleteAttempts=0;
@@ -168,6 +171,21 @@ test('clause endpoint returns the stored per-clause score and omits it when none
     assert.equal(body.length,1);
     assert.equal('riskScore' in body[0],false);
   } finally {await plain.app.close();}
+});
+
+test('contract list coerces stored scores to the 0-100 range instead of passing null or overflow through',async()=>{
+  const {app: nullScoreApp} = await fixture({scoreOverrides: {'contract-a': null, 'contract-b': 250}});
+  try {
+    const a = await nullScoreApp.inject({url:'/contracts',headers:headers('user-a')});
+    assert.equal(a.json()[0].overallRiskScore, 0);
+    const b = await nullScoreApp.inject({url:'/contracts',headers:headers('user-b')});
+    assert.equal(b.json()[0].overallRiskScore, 100);
+  } finally {await nullScoreApp.close();}
+  const {app: validApp} = await fixture({scoreOverrides: {'contract-a': 42}});
+  try {
+    const a = await validApp.inject({url:'/contracts',headers:headers('user-a')});
+    assert.equal(a.json()[0].overallRiskScore, 42);
+  } finally {await validApp.close();}
 });
 
 test('contract list is paginated and rejects invalid pagination',async()=>{

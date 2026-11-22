@@ -5,20 +5,10 @@ export default function NotFound() {
   return (
     <div className="min-h-screen bg-background-base flex items-center justify-center p-8">
       <div className="max-w-md w-full text-center space-y-8">
-        {/* Glowing 404 */}
         <div className="relative">
-          <p
-            className="font-mono text-[120px] font-black leading-none select-none"
-            style={{
-              background: 'linear-gradient(135deg, rgba(75,75,160,0.8) 0%, rgba(75,75,160,0.15) 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              filter: 'drop-shadow(0 0 40px rgba(75,75,160,0.2))'
-            }}
-          >
+          <p className="font-mono text-[120px] font-black leading-none select-none text-accent-cyan">
             404
           </p>
-          <div className="absolute inset-0 blur-3xl bg-accent-cyan/5 -z-10" />
         </div>
 
         <div className="space-y-3">

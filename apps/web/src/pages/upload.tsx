@@ -67,7 +67,7 @@ export default function UploadPage() {
     setProgress({
       contractId: '',
       stage: 'pending',
-      message: 'Uploading document to secure vaults...',
+      message: 'Uploading document…',
       percent: 5
     });
 
@@ -85,7 +85,7 @@ export default function UploadPage() {
           setProgress({
             contractId: '',
             stage: 'pending',
-            message: 'Uploading contract to database...',
+            message: 'Uploading contract…',
             percent: uploadPercent
           });
         }
@@ -221,7 +221,7 @@ export default function UploadPage() {
           <span className="text-xs font-sans text-text-secondary font-medium">Back to dashboard</span>
         </div>
 
-        <div className="glass-panel p-8 rounded border border-overlay/5 space-y-6">
+        <div className="bg-background-panel p-8 rounded border border-overlay/5 space-y-6">
           <div>
             <h2 className="text-xl font-sans font-medium text-text-primary tracking-tight">
               Upload contract
@@ -232,10 +232,10 @@ export default function UploadPage() {
           </div>
 
           {error && (
-            <div className="bg-risk-critical/10 border border-risk-critical/30 rounded p-4 text-xs font-mono text-risk-critical flex gap-3 items-start relative animate-fade-in shadow-[0_0_15px_rgba(255,77,77,0.05)]">
+            <div className="bg-risk-critical/10 border border-risk-critical/30 rounded p-4 text-xs font-mono text-risk-critical flex gap-3 items-start relative animate-fade-in">
               <Terminal className="w-5 h-5 shrink-0 mt-0.5" />
               <div className="flex-grow space-y-1.5">
-                <div className="font-bold text-sm tracking-tight">INGESTION DIAGNOSTIC WARNING</div>
+                <div className="font-bold text-sm tracking-tight">Upload failed</div>
                 <div className="leading-relaxed text-text-primary/95">{error}</div>
               </div>
               <button
@@ -289,7 +289,7 @@ export default function UploadPage() {
                   className="hidden"
                 />
                 <div className="w-12 h-12 rounded bg-overlay/5 border border-overlay/10 text-text-secondary group-hover:text-accent-cyan group-hover:border-accent-cyan/40 flex items-center justify-center precise-transition shadow-lg">
-                  <Upload className="w-5 h-5 group-hover:scale-110 precise-transition" />
+                  <Upload className="w-5 h-5 precise-transition" />
                 </div>
                 <div>
                   <p className="font-sans text-sm font-medium text-text-primary group-hover:text-accent-cyan precise-transition">

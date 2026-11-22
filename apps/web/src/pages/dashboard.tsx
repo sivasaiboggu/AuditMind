@@ -1,11 +1,9 @@
 import { jobStatusNotice } from '../lib/job-status';
-import { buildTrendData, countByRiskBucket, countHighRiskCompleted, riskBucket } from '../lib/dashboard';
+import { buildTrendData, countByRiskBucket, countHighRiskCompleted, matchesRiskFilter, riskBucket } from '../lib/dashboard';
 import { workspaceGuard } from '../lib/workspace-guard';
 import { authenticatedFetch } from '../lib/api';
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import type { Variants } from 'framer-motion';
 import { useContractStore } from '../store/contractStore';
 import { useAuth } from '../lib/auth-context';
 import { useTheme } from '../lib/theme';
@@ -24,16 +22,8 @@ type StatusFilter = 'all' | 'completed' | 'processing' | 'failed' | 'queued';
 type RiskFilter = 'all' | 'critical' | 'high' | 'medium' | 'low';
 type SortBy = 'date-desc' | 'date-asc' | 'risk-desc' | 'risk-asc' | 'name-asc';
 
-const listVariants: Variants = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.05 } },
-};
-
-const rowVariants: Variants = {
-  hidden: { opacity: 0, y: 8 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.25, ease: [0.16, 1, 0.3, 1] } },
-};
-
+// The contract list renders without an entrance animation: rows appear
+// when the data arrives, and delaying them would only slow reading.
 const selectClassName =
   'rounded-lg border border-overlay/10 bg-background-panel px-3 py-2.5 text-xs font-mono text-text-secondary outline-none focus:border-accent-cyan/50 precise-transition';
 
@@ -114,8 +104,11 @@ export default function Dashboard() {
   // the card captions this "of N analysed", so a processing or failed
   // contract must never count even if it ever carries a score.
   const highRiskContracts = countHighRiskCompleted(contracts);
+  // Average risk over completed contracts only; a processing contract
+  // still carries its placeholder score of 0, and a non-finite score
+  // from a stale row must not turn the average into NaN.
   const avgRiskScore = completedContracts.length > 0
-    ? Math.round(completedContracts.reduce((acc, c) => acc + c.overallRiskScore, 0) / completedContracts.length)
+    ? Math.round(completedContracts.reduce((acc, c) => acc + (Number.isFinite(c.overallRiskScore) ? c.overallRiskScore : 0), 0) / completedContracts.length)
     : 0;
 
   // Average risk over completed contracts only; a processing contract
@@ -131,7 +124,7 @@ export default function Dashboard() {
   ];
 
   // Chart colours adapt to the active theme (cyan line is unreadable on white).
-  const chartLine = theme === 'dark' ? '#00E5FF' : '#4B4BA0';
+  const chartLine = theme === 'dark' ? '#2DD4BF' : '#0F766E';
   const tooltipBg = theme === 'dark' ? '#0F121D' : '#FFFFFF';
   const tooltipBorder = theme === 'dark'
     ? '1px solid rgba(255,255,255,0.08)'
@@ -150,7 +143,7 @@ export default function Dashboard() {
           return false;
         }
       }
-      if (riskFilter !== 'all' && riskBucket(c.overallRiskScore) !== riskFilter) return false;
+      if (riskFilter !== 'all' && !matchesRiskFilter(c, riskFilter)) return false;
       return true;
     });
     const byDate = (a: Contract, b: Contract) =>
@@ -190,7 +183,7 @@ export default function Dashboard() {
       case 'completed':
         return <Badge tone="success">Analyzed</Badge>;
       case 'processing':
-        return <Badge tone="info" className="animate-pulse">Analyzing</Badge>;
+        return <Badge tone="info">Analyzing</Badge>;
       case 'failed':
         return <Badge tone="danger">Failed</Badge>;
       default:
@@ -251,7 +244,7 @@ export default function Dashboard() {
         {notification && (
           <div className="bg-accent-cyan/10 border border-accent-cyan/20 p-3.5 rounded-lg text-xs font-mono text-accent-cyan flex items-center justify-between shadow-card">
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-accent-cyan animate-ping"></span>
+              <span className="w-2 h-2 rounded-full bg-accent-cyan"></span>
               <span>{notification}</span>
             </div>
             <button onClick={() => setNotification(null)} aria-label="Dismiss notification" className="text-[10px] hover:text-text-primary uppercase tracking-wider font-bold">Dismiss</button>
@@ -311,7 +304,7 @@ export default function Dashboard() {
                   className="h-full min-h-[200px] rounded-xl border border-dashed border-overlay/10 hover:border-accent-cyan bg-background-panel/30 hover:bg-accent-cyan/5 shadow-card flex flex-col items-center justify-center p-6 text-center precise-transition group cursor-pointer"
                 >
                   <div className="w-12 h-12 rounded bg-overlay/5 border border-overlay/10 text-text-secondary group-hover:text-accent-cyan group-hover:border-accent-cyan/40 flex items-center justify-center precise-transition shadow-lg mb-3">
-                    <Upload className="w-5 h-5 group-hover:scale-110 precise-transition" />
+                    <Upload className="w-5 h-5 precise-transition" />
                   </div>
                   <p className="font-sans text-sm font-medium text-text-primary group-hover:text-accent-cyan precise-transition">
                     Upload new contract
@@ -323,55 +316,55 @@ export default function Dashboard() {
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <Card className="p-5 flex flex-col justify-between lift-hover">
+                <Card className="p-5 flex flex-col justify-between">
                   <div className="flex items-center justify-between text-text-muted">
                     <FileCheck className="w-4 h-4 text-accent-cyan" />
                     <span className="text-[10px] font-sans uppercase tracking-wider">Total</span>
                   </div>
                   <div className="mt-4">
-                    <div className="text-3xl font-sans font-bold text-text-primary">
+                    <div className="text-3xl font-sans font-bold text-text-primary tnum">
                       {contracts.length}
                     </div>
-                    <p className="text-[10px] font-sans text-text-secondary mt-1 uppercase">Total Contracts · {completedContracts.length} analysed</p>
+                    <p className="text-[10px] font-sans text-text-secondary mt-1 uppercase">{completedContracts.length} analysed</p>
                   </div>
                 </Card>
 
-                <Card className="p-5 flex flex-col justify-between lift-hover">
+                <Card className="p-5 flex flex-col justify-between">
                   <div className="flex items-center justify-between text-text-muted">
                     <AlertTriangle className="w-4 h-4 text-risk-high" />
                     <span className="text-[10px] font-sans uppercase tracking-wider">High Risk</span>
                   </div>
                   <div className="mt-4">
-                    <div className="text-3xl font-sans font-bold text-risk-critical">
+                    <div className="text-3xl font-sans font-bold text-risk-critical tnum">
                       {highRiskContracts}
                     </div>
-                    <p className="text-[10px] font-sans text-text-secondary mt-1 uppercase">High Risk · of {completedContracts.length} analysed</p>
+                    <p className="text-[10px] font-sans text-text-secondary mt-1 uppercase">of {completedContracts.length} analysed</p>
                   </div>
                 </Card>
 
-                <Card className="p-5 flex flex-col justify-between lift-hover">
+                <Card className="p-5 flex flex-col justify-between">
                   <div className="flex items-center justify-between text-text-muted">
                     <Clock className="w-4 h-4 text-risk-medium" />
                     <span className="text-[10px] font-sans uppercase tracking-wider">Processing</span>
                   </div>
                   <div className="mt-4">
-                    <div className="text-3xl font-sans font-bold text-text-primary">
+                    <div className="text-3xl font-sans font-bold text-text-primary tnum">
                       {contracts.filter(c => c.status === 'processing').length}
                     </div>
-                    <p className="text-[10px] font-sans text-text-secondary mt-1 uppercase">Analyzing · in progress now</p>
+                    <p className="text-[10px] font-sans text-text-secondary mt-1 uppercase">in progress now</p>
                   </div>
                 </Card>
 
-                <Card className="p-5 flex flex-col justify-between lift-hover">
+                <Card className="p-5 flex flex-col justify-between">
                   <div className="flex items-center justify-between text-text-muted">
                     <CheckCircle2 className="w-4 h-4 text-risk-low" />
                     <span className="text-[10px] font-sans uppercase tracking-wider">Average Risk</span>
                   </div>
                   <div className="mt-4">
-                    <div className="text-3xl font-sans font-bold text-text-primary">
+                    <div className="text-3xl font-sans font-bold text-text-primary tnum">
                       {avgRiskScore}%
                     </div>
-                    <p className="text-[10px] font-sans text-text-secondary mt-1 uppercase">Average Score · across {completedContracts.length} analysed</p>
+                    <p className="text-[10px] font-sans text-text-secondary mt-1 uppercase">across {completedContracts.length} analysed</p>
                   </div>
                 </Card>
               </div>
@@ -400,14 +393,14 @@ export default function Dashboard() {
                           <stop offset="95%" stopColor={chartLine} stopOpacity={0} />
                         </linearGradient>
                       </defs>
-                      <XAxis dataKey="name" stroke="#64748B" fontSize={10} fontFamily="JetBrains Mono" tickLine={false} />
-                      <YAxis stroke="#64748B" fontSize={10} fontFamily="JetBrains Mono" tickLine={false} />
+                      <XAxis dataKey="name" stroke="#64748B" fontSize={10} fontFamily="IBM Plex Mono" tickLine={false} />
+                      <YAxis stroke="#64748B" fontSize={10} fontFamily="IBM Plex Mono" tickLine={false} />
                       <Tooltip
                         contentStyle={{ background: tooltipBg, border: tooltipBorder, borderRadius: '4px' }}
                         labelClassName="font-mono text-xs text-text-secondary"
-                        itemStyle={{ fontFamily: 'JetBrains Mono', fontSize: '12px' }}
+                        itemStyle={{ fontFamily: 'IBM Plex Mono', fontSize: '12px' }}
                       />
-                      <Area type="monotone" dataKey="avgRisk" stroke={chartLine} strokeWidth={1.5} fillOpacity={1} fill="url(#colorRisk)" connectNulls={false} />
+                      <Area type="monotone" dataKey="avgRisk" stroke={chartLine} strokeWidth={1.5} fillOpacity={1} fill="url(#colorRisk)" connectNulls={false} isAnimationActive={false} dot={{ r: 3, fill: chartLine, strokeWidth: 0 }} activeDot={{ r: 4, fill: chartLine, strokeWidth: 0 }} />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -428,13 +421,13 @@ export default function Dashboard() {
                 <div className="h-[200px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={distributionData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                      <XAxis dataKey="name" stroke="#64748B" fontSize={10} fontFamily="JetBrains Mono" tickLine={false} />
-                      <YAxis stroke="#64748B" fontSize={10} fontFamily="JetBrains Mono" tickLine={false} />
+                      <XAxis dataKey="name" stroke="#64748B" fontSize={10} fontFamily="IBM Plex Mono" tickLine={false} />
+                      <YAxis stroke="#64748B" fontSize={10} fontFamily="IBM Plex Mono" tickLine={false} />
                       <Tooltip
                         contentStyle={{ background: tooltipBg, border: tooltipBorder, borderRadius: '4px' }}
                         cursor={{ fill: 'rgba(128,128,128,0.06)' }}
                       />
-                      <Bar dataKey="count" radius={[2, 2, 0, 0]}>
+                      <Bar dataKey="count" radius={[2, 2, 0, 0]} isAnimationActive={false}>
                         {distributionData.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={entry.color} />
                         ))}
@@ -555,16 +548,10 @@ export default function Dashboard() {
                   }
                 />
               ) : (
-                <motion.div
-                  variants={listVariants}
-                  initial="hidden"
-                  animate="show"
-                  className="divide-y divide-overlay/5"
-                >
+                <div className="divide-y divide-overlay/5">
                   {filteredContracts.map((contract) => (
-                    <motion.div
+                    <div
                       key={contract.id}
-                      variants={rowVariants}
                       onClick={() => {
                         if (confirmingDeleteId) return;
                         if (contract.status === 'completed') handleSelectContract(contract);
@@ -605,11 +592,11 @@ export default function Dashboard() {
                           <div className="flex items-center gap-3">
                             <div className="text-right">
                               <span className="text-[10px] font-mono text-text-muted block uppercase">Risk Score</span>
-                              <span className="text-sm font-mono font-bold text-text-primary">
+                              <span className="text-sm font-mono font-bold text-text-primary tnum">
                                 {contract.overallRiskScore}%
                               </span>
                             </div>
-                            <div className={`w-8 h-8 rounded-full border flex items-center justify-center font-mono text-xs font-bold ${getRiskColor(contract.overallRiskScore)}`}>
+                            <div className={`w-8 h-8 rounded-full border flex items-center justify-center font-mono text-xs font-bold tnum ${getRiskColor(contract.overallRiskScore)}`}>
                               {contract.overallRiskScore}
                             </div>
                           </div>
@@ -658,9 +645,9 @@ export default function Dashboard() {
                           <ChevronRight className="w-5 h-5 text-text-muted hover:text-accent-cyan precise-transition" />
                         )}
                       </div>
-                    </motion.div>
+                    </div>
                   ))}
-                </motion.div>
+                </div>
               )}
             </Card>
           </>

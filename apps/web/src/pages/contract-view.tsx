@@ -495,8 +495,8 @@ export default function ContractView() {
               </p>
             )}
             <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[10px] font-mono text-text-muted">
-              <span className="kbd">↑</span>
-              <span className="kbd">↓</span>
+              <span className="kbd">Up</span>
+              <span className="kbd">Down</span>
               <span className="mr-2">move</span>
               <span className="kbd">/</span>
               <span className="mr-2">search</span>
@@ -575,7 +575,7 @@ export default function ContractView() {
                       {typeof clause.riskScore === 'number' && (
                         <span
                           title="Review-priority score (0–100), uncalibrated — the number behind this risk tier"
-                          className="font-mono text-[10px] font-bold text-text-secondary border border-overlay/10 rounded px-1.5 py-0.5"
+                          className="font-mono text-[10px] font-bold text-text-secondary border border-overlay/10 rounded px-1.5 py-0.5 tnum"
                         >
                           {clause.riskScore}
                         </span>
@@ -677,7 +677,7 @@ export default function ContractView() {
                       {typeof selectedClause.riskScore === 'number' && (
                         <span
                           title="Review-priority score (0–100), uncalibrated"
-                          className="font-mono text-xs font-bold text-text-secondary border border-overlay/10 rounded px-2 py-1.5"
+                          className="font-mono text-xs font-bold text-text-secondary border border-overlay/10 rounded px-2 py-1.5 tnum"
                         >
                           Score {selectedClause.riskScore} / 100
                         </span>
@@ -755,7 +755,7 @@ export default function ContractView() {
                     className="w-full mt-2 py-3 rounded-lg border border-accent-cyan/20 bg-accent-cyan/3 hover:bg-accent-cyan/8 hover:border-accent-cyan/40 text-accent-cyan text-xs font-mono font-bold uppercase tracking-wider precise-transition flex items-center justify-center gap-2"
                   >
                     <MessageSquareCode className="w-3.5 h-3.5" />
-                    Ask AI about this clause →
+                    Ask AI about this clause
                   </button>
                 </div>
               )}
@@ -833,8 +833,7 @@ export default function ContractView() {
                   {/* Chat context pill */}
                   <div className="px-4 py-2 flex-shrink-0 border-b border-overlay/5 bg-background-base/20">
                     <div className="flex items-center gap-2 text-[10px] font-mono text-text-muted">
-                      <span className="text-accent-cyan">▸</span>
-                      Context:
+                      <span className="text-text-secondary font-bold">Context:</span>
                       <span className="text-text-secondary font-bold truncate">
                         {selectedClause.number ? `${selectedClause.number} · ` : ''}{selectedClause.title}
                       </span>

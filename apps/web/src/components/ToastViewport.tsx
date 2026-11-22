@@ -34,7 +34,7 @@ export function ToastViewport({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8, scale: 0.98 }}
               transition={{ duration: 0.2 }}
-              className="glass-panel pointer-events-auto flex items-start gap-3 rounded-lg border border-overlay/10 p-3.5 shadow-xl"
+              className="bg-background-panel pointer-events-auto flex items-start gap-3 rounded-lg border border-overlay/10 p-3.5 shadow-xl"
             >
               <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${tones[toast.type]}`} />
               <p className="min-w-0 flex-1 text-sm leading-snug text-text-primary">

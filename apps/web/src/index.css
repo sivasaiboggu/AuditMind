@@ -5,69 +5,64 @@
 /* ------------------------------------------------------------------ */
 /* Theme tokens                                                        */
 /*                                                                     */
-/* `:root` is the clean light theme. `.dark` (toggled on <html> by    */
-/* the theme provider, see src/lib/theme.tsx) restores the original    */
-/* dark "neuro-terminal" aesthetic. All component colours resolve     */
-/* through these variables so no page needs hard-coded theme values.  */
+/* `:root` is the clean light theme (warm paper + ink). `.dark`        */
+/* (toggled on <html> by the theme provider, see src/lib/theme.tsx)   */
+/* is the dark set. All component colours resolve through these       */
+/* variables so no page needs hard-coded theme values.                */
+/*                                                                     */
+/* One accent (see docs/design-references-1.0.6.md): teal-700 on      */
+/* paper, teal-400 on ink. The indigo/violet pair is gone. Risk hues  */
+/* are the only other colours in the product.                          */
 /* ------------------------------------------------------------------ */
 
 :root {
   color-scheme: light;
-  --bg-base: 250 250 250;
+  --bg-base: 250 250 247;
   --bg-panel: 255 255 255;
-  --bg-hover: 244 244 245;
-  --text-primary: 24 24 27;
-  --text-secondary: 63 63 70;
-  --text-muted: 113 113 122;
+  --bg-hover: 243 243 240;
+  --text-primary: 25 28 27;
+  --text-secondary: 70 76 74;
+  --text-muted: 110 116 113;
   /* Translucent tint: dark slate on light backgrounds. */
   --overlay: 15 23 42;
-  --glass-bg: 255 255 255;
-  --glass-shadow: 0 4px 24px rgb(15 23 42 / 0.08);
-  --canvas-bg: #fafafa;
-  --canvas-grid: rgb(15 23 42 / 0.04);
+  /* One accent, per theme. */
+  --accent: 15 118 110;
   /* Focus ring and elevation, shared by every interactive element. */
-  --ring: 75 75 160;
+  --ring: 15 118 110;
   --shadow-card: 0 1px 2px rgb(15 23 42 / 0.05), 0 4px 16px rgb(15 23 42 / 0.05);
-  --shadow-lift: 0 2px 6px rgb(15 23 42 / 0.08), 0 16px 40px rgb(15 23 42 / 0.12);
 }
 
 .dark {
   color-scheme: dark;
-  --bg-base: 17 17 17;
-  --bg-panel: 23 23 23;
-  --bg-hover: 31 31 31;
-  /* Primary body text was zinc-400 on near-black, too dim to read
-   * comfortably; zinc-200 keeps the hierarchy (secondary/muted stay
-   * dimmer) while restoring normal body contrast. */
-  --text-primary: 228 228 231;
-  --text-secondary: 113 113 122;
-  --text-muted: 82 82 91;
+  --bg-base: 16 20 20;
+  --bg-panel: 23 29 28;
+  --bg-hover: 30 38 36;
+  /* Primary body text keeps the hierarchy (secondary/muted stay dimmer)
+   * while remaining readable on near-black. */
+  --text-primary: 233 239 236;
+  --text-secondary: 160 170 167;
+  --text-muted: 125 134 131;
   /* Translucent tint: white on dark backgrounds. */
   --overlay: 255 255 255;
-  --glass-bg: 15 18 29;
-  --glass-shadow: 0 4px 30px rgb(0 0 0 / 0.5);
-  --canvas-bg: #111111;
-  --canvas-grid: rgb(255 255 255 / 0.01);
-  --ring: 129 140 248;
+  --accent: 45 212 191;
+  --ring: 45 212 191;
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 4px 16px rgb(0 0 0 / 0.35);
-  --shadow-lift: 0 2px 6px rgb(0 0 0 / 0.5), 0 16px 40px rgb(0 0 0 / 0.5);
 }
 
 @layer utilities {
   /* Fluid display size: 36px on small screens, 56px on wide ones, with a
      tight line-height and tracking so the hero reads as one block. */
   .display-lg {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     font-size: clamp(2.25rem, 4.5vw, 3.5rem);
-    font-weight: 400;
+    font-weight: 600;
     line-height: 1.05;
-    letter-spacing: -0.03em;
+    letter-spacing: -0.02em;
     text-transform: none;
   }
 
-  /* Card and lifted elevation, resolved per theme. */
+  /* Card elevation, resolved per theme. */
   .shadow-card { box-shadow: var(--shadow-card); }
-  .shadow-lift { box-shadow: var(--shadow-lift); }
 
   /* Small keyboard-hint chip (arrow-key navigation, search shortcut). */
   .kbd {
@@ -80,7 +75,7 @@
     border: 1px solid rgb(var(--overlay) / 0.12);
     border-bottom-width: 2px;
     background: rgb(var(--bg-panel));
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-family: 'IBM Plex Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
     font-size: 0.625rem;
     font-weight: 600;
     line-height: 1.4;
@@ -88,28 +83,16 @@
   }
 
   .body-md {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     line-height: normal;
     letter-spacing: normal;
     text-transform: none;
   }
 
-  /* Subtle horizontal scanlines, theme-aware (used by landing / login). */
-  .scanlines {
-    background-image: linear-gradient(rgb(var(--overlay) / 0) 50%, rgb(var(--overlay) / 0.05) 50%);
-    background-size: 100% 4px;
-  }
-
-  /* Shimmering placeholder surface for Skeleton. */
-  .skeleton-shimmer {
-    background: linear-gradient(
-      90deg,
-      rgb(var(--overlay) / 0.06) 25%,
-      rgb(var(--overlay) / 0.12) 50%,
-      rgb(var(--overlay) / 0.06) 75%
-    );
-    background-size: 200% 100%;
-    animation: shimmer 1.5s linear infinite;
+  /* Tabular figures for numbers that get compared (stat values, risk
+   * scores, IDs in tables): digits share a width so columns line up. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
   }
 }
 
@@ -136,7 +119,7 @@
   }
 }
 
-/* Custom Scrollbars for Neuro-Terminal UI */
+/* Custom Scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -152,96 +135,12 @@
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgb(75 75 160 / 0.5);
-}
-
-/* Technical bio-grid pattern background */
-.neuro-bg-grid {
-  background-image: radial-gradient(rgb(var(--overlay) / 0.035) 1px, transparent 0);
-  background-size: 24px 24px;
-}
-
-/* Ambient glowing spot lights */
-.ambient-glow-cyan {
-  background: radial-gradient(circle, rgba(75, 75, 160, 0.12) 0%, transparent 70%);
-  filter: blur(40px);
-}
-
-.ambient-glow-violet {
-  background: radial-gradient(circle, rgba(143, 71, 174, 0.09) 0%, transparent 70%);
-  filter: blur(40px);
-}
-
-/* Glassmorphism Panel styles */
-.glass-panel {
-  background: rgb(var(--glass-bg) / 0.7);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgb(var(--overlay) / 0.04);
-  box-shadow: var(--glass-shadow);
-}
-
-.glass-panel-hover:hover {
-  border-color: rgba(75, 75, 160, 0.35);
-  background: rgb(var(--glass-bg) / 0.8);
-  box-shadow: 0 8px 32px rgba(75, 75, 160, 0.08);
-}
-
-/* Premium Glowing Border Card (Neuform reference) */
-.glowing-card {
-  position: relative;
-  background: rgb(var(--glass-bg) / 0.85);
-  border: 1px solid rgb(var(--overlay) / 0.05);
-  transition: all 400ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.glowing-card::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  background: linear-gradient(90deg, rgba(75, 75, 160, 0.4) 0%, rgba(143, 71, 174, 0.4) 100%);
-  border-radius: inherit;
-  z-index: -1;
-  opacity: 0;
-  transition: opacity 400ms ease;
-}
-
-.glowing-card:hover::before {
-  opacity: 1;
-}
-
-.glowing-card:hover {
-  border-color: transparent;
-  box-shadow: 0 0 25px rgba(75, 75, 160, 0.15);
-  transform: translateY(-2px);
-}
-
-/* Glass Interactive Buttons */
-.glass-button {
-  background: rgb(var(--overlay) / 0.03);
-  border: 1px solid rgb(var(--overlay) / 0.06);
-  backdrop-filter: blur(4px);
-  transition: all 250ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.glass-button:hover {
-  background: rgba(75, 75, 160, 0.08);
-  border-color: rgba(75, 75, 160, 0.4);
-  box-shadow: 0 0 15px rgba(75, 75, 160, 0.1);
+  background: rgb(var(--accent) / 0.5);
 }
 
 /* Precise transition styles */
 .precise-transition {
   transition: all 250ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-/* Gentle lift on hover for cards that are interactive (stat cards, clause
-   rows). Transform + shadow only; no colour change, so it stays quiet. */
-.lift-hover {
-  transition: transform 250ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 250ms cubic-bezier(0.16, 1, 0.3, 1), border-color 250ms ease;
-}
-.lift-hover:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-lift);
 }
 
 /* Fade-in used by the upload error banner (was referenced but never defined,
@@ -252,22 +151,5 @@
 
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* Staggered entrance for a row/grid of siblings (React Bits style):
-   add `stagger-rise` to the container; each direct child rises in turn. */
-.stagger-rise > * {
-  animation: stagger-rise 450ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-.stagger-rise > *:nth-child(1) { animation-delay: 0.02s; }
-.stagger-rise > *:nth-child(2) { animation-delay: 0.08s; }
-.stagger-rise > *:nth-child(3) { animation-delay: 0.14s; }
-.stagger-rise > *:nth-child(4) { animation-delay: 0.2s; }
-.stagger-rise > *:nth-child(5) { animation-delay: 0.26s; }
-.stagger-rise > *:nth-child(6) { animation-delay: 0.32s; }
-
-@keyframes stagger-rise {
-  from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }

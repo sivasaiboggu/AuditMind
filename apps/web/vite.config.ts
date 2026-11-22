@@ -4,6 +4,9 @@ import path from 'path';
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  // Relative base: the built app also works served from a subpath
+  // (GitHub Pages) or opened from disk, instead of assuming "/".
+  base: './',
   plugins: [react()],
   resolve: {
     alias: {

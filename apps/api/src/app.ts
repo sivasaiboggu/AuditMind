@@ -59,6 +59,14 @@ function parsePagination(req: { query: unknown }): { limit: number; offset: numb
   return parsed.success ? parsed.data : null;
 }
 
+/** The overall score is defined as 0–100. A stored null, a non-number or
+ * an out-of-range value must reach the UI as the unreviewed placeholder
+ * 0, never as `null` (which rendered as "null%") or NaN. */
+function boundedScore(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+  return Math.min(100, Math.max(0, value));
+}
+
 /** Build the real routes without listening, allowing isolated integration tests. */
 export async function buildApp(deps: AppDependencies = {}) {
 const url = process.env.SUPABASE_URL || '';
@@ -262,7 +270,7 @@ app.get('/contracts', async (req, reply) => {
     processingAttempts: item.processing_attempts || 0,
     processingError: item.processing_error || null,
     nextRetryAt: item.next_retry_at || null,
-    overallRiskScore: item.overall_risk_score,
+    overallRiskScore: boundedScore(item.overall_risk_score),
     createdAt: item.created_at,
     updatedAt: item.updated_at
   }));

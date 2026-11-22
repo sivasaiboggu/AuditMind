@@ -16,16 +16,15 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setView, onLogout }
   const { theme, toggleTheme } = useTheme();
 
   return (
-    <header className="glass-panel border-b border-overlay/5 px-4 sm:px-6 py-3 flex flex-wrap gap-3 items-center justify-between shrink-0 sticky top-0 z-50">
+    <header className="bg-background-panel border-b border-overlay/5 px-4 sm:px-6 py-3 flex flex-wrap gap-3 items-center justify-between shrink-0 sticky top-0 z-50">
       <div className="flex items-center gap-3 min-w-0">
-        <div className="relative flex items-center justify-center w-10 h-10 rounded bg-background-base border border-accent-cyan/25 text-accent-cyan shadow-[0_0_15px_rgba(75,75,160,0.12)]">
+        <div className="flex items-center justify-center w-10 h-10 rounded bg-background-base border border-accent-cyan/25 text-accent-cyan">
           <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M12 22C12 22 20 18 20 12V5L12 2L4 5V12C4 18 12 22 12 22Z" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
             <path d="M9 11H15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             <path d="M12 8V15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             <path d="M10.5 15H13.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
-          <div className="absolute -inset-0.5 rounded bg-accent-cyan opacity-5 blur-sm"></div>
         </div>
         <div>
           <span className="font-mono text-lg font-bold tracking-wider text-text-primary">
@@ -91,10 +90,10 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, setView, onLogout }
               <img
                 src={user.avatarUrl}
                 alt="Profile"
-                className="w-8 h-8 rounded-full border border-accent-cyan/30 shadow-[0_0_10px_rgba(75,75,160,0.2)]"
+                className="w-8 h-8 rounded-full border border-accent-cyan/30"
               />
             ) : (
-              <div className="w-8 h-8 rounded-full bg-accent-cyan/10 border border-accent-cyan/30 flex items-center justify-center text-xs font-mono font-bold text-accent-cyan shadow-[0_0_10px_rgba(75,75,160,0.1)]">
+              <div className="w-8 h-8 rounded-full bg-accent-cyan/10 border border-accent-cyan/30 flex items-center justify-center text-xs font-mono font-bold text-accent-cyan">
                 {(user.email[0] || '?').toUpperCase()}
               </div>
             )}

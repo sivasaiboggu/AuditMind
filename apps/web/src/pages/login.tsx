@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth-context';
 import { useTheme } from '../lib/theme';
+import { supabase } from '../lib/supabase';
 import { Shield, Mail, Terminal, ArrowRight, CheckCircle2, Moon, Sun } from 'lucide-react';
 
 export default function Login() {
@@ -14,19 +15,6 @@ export default function Login() {
   const [otpStep, setOtpStep] = useState<'request' | 'verify'>('request');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-
-  // Theme tokens for the canvas, re-read only when the theme changes —
-  // reading getComputedStyle every animation frame was wasted work, the
-  // same fix the landing canvas got in round 5.
-  const themeTokensRef = useRef({ bg: '#111111', grid: 'rgba(255,255,255,0.01)' });
-  useEffect(() => {
-    const rootStyles = getComputedStyle(document.documentElement);
-    themeTokensRef.current = {
-      bg: rootStyles.getPropertyValue('--canvas-bg').trim() || '#111111',
-      grid: rootStyles.getPropertyValue('--canvas-grid').trim() || 'rgba(255,255,255,0.01)',
-    };
-  }, [theme]);
 
   // Redirect to dashboard if session already active
   useEffect(() => {
@@ -34,121 +22,6 @@ export default function Login() {
       navigate('/dashboard');
     }
   }, [user, authLoading, navigate]);
-
-  // Synapse background animation
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || navigator.hardwareConcurrency < 4) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let animationFrameId: number;
-    let width = (canvas.width = window.innerWidth);
-    let height = (canvas.height = window.innerHeight);
-
-    interface Node {
-      x: number;
-      y: number;
-      vx: number;
-      vy: number;
-      radius: number;
-    }
-
-    const nodesCount = Math.min(60, Math.floor((width * height) / 20000));
-    const nodes: Node[] = [];
-
-    for (let i = 0; i < nodesCount; i++) {
-      nodes.push({
-        x: Math.random() * width,
-        y: Math.random() * height,
-        vx: (Math.random() - 0.5) * 0.4,
-        vy: (Math.random() - 0.5) * 0.4,
-        radius: Math.random() * 1.5 + 0.5,
-      });
-    }
-
-    // Respect reduced-motion: draw one static frame instead of animating.
-    const prefersReducedMotion = () =>
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-    const resizeHandler = () => {
-      if (!canvas) return;
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
-      // With reduced motion only one static frame is ever drawn, and
-      // resizing clears the canvas — redraw that frame so the background
-      // does not go blank. When animating, the running loop repaints on
-      // its next frame, so no extra draw is scheduled here.
-      if (prefersReducedMotion()) animate();
-    };
-    window.addEventListener('resize', resizeHandler);
-
-    const animate = () => {
-      // Theme tokens are cached in a ref and refreshed on theme change.
-      const { bg: canvasBg, grid: gridStroke } = themeTokensRef.current;
-      ctx.fillStyle = canvasBg;
-      ctx.fillRect(0, 0, width, height);
-
-      ctx.strokeStyle = gridStroke;
-      ctx.lineWidth = 1;
-      const gridSize = 60;
-      for (let x = 0; x < width; x += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, height);
-        ctx.stroke();
-      }
-      for (let y = 0; y < height; y += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(width, y);
-        ctx.stroke();
-      }
-
-      nodes.forEach((node) => {
-        node.x += node.vx;
-        node.y += node.vy;
-
-        if (node.x < 0 || node.x > width) node.vx *= -1;
-        if (node.y < 0 || node.y > height) node.vy *= -1;
-
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(75, 75, 160, 0.35)';
-        ctx.fill();
-      });
-
-      ctx.lineWidth = 0.5;
-      for (let i = 0; i < nodes.length; i++) {
-        for (let j = i + 1; j < nodes.length; j++) {
-          const dx = nodes[i].x - nodes[j].x;
-          const dy = nodes[i].y - nodes[j].y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-
-          if (dist < 130) {
-            const alpha = (1 - dist / 130) * 0.12;
-            ctx.strokeStyle = `rgba(75, 75, 160, ${alpha})`;
-            ctx.beginPath();
-            ctx.moveTo(nodes[i].x, nodes[i].y);
-            ctx.lineTo(nodes[j].x, nodes[j].y);
-            ctx.stroke();
-          }
-        }
-      }
-
-      // Respect reduced-motion: draw one static frame instead of animating.
-      if (!prefersReducedMotion()) {
-        animationFrameId = requestAnimationFrame(animate);
-      }
-    };
-
-    animate();
-
-    return () => {
-      cancelAnimationFrame(animationFrameId);
-      window.removeEventListener('resize', resizeHandler);
-    };
-  }, []);
 
   const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -190,16 +63,17 @@ export default function Login() {
   };
 
   const handleBypass = async () => {
-    await loginBypass(email || 'demo.analyst@auditmind.local');
-    navigate('/dashboard');
+    setError(null);
+    try {
+      await loginBypass(email || 'demo.analyst@auditmind.local');
+      navigate('/dashboard');
+    } catch (err: any) {
+      setError(err.message || 'Demo login is unavailable.');
+    }
   };
 
   return (
     <div className="relative min-h-screen flex items-center justify-center p-4 overflow-hidden">
-      <canvas ref={canvasRef} className="absolute inset-0 z-0 pointer-events-none" />
-
-      <div className="scanlines absolute inset-0 pointer-events-none z-[1]"></div>
-
       <button
         onClick={toggleTheme}
         aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
@@ -210,10 +84,10 @@ export default function Login() {
         {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
       </button>
 
-      <div className="relative z-10 w-full max-w-md glass-panel p-8 rounded border border-overlay/5 shadow-2xl">
+      <div className="relative z-10 w-full max-w-md bg-background-panel p-8 rounded border border-overlay/5 shadow-2xl">
         <div className="flex flex-col items-center mb-8">
-          <div className="w-12 h-12 rounded bg-background-base border border-accent-cyan/40 text-accent-cyan flex items-center justify-center mb-3 shadow-[0_0_20px_rgba(75,75,160,0.25)]">
-            <Shield className="w-6 h-6 animate-pulse" />
+          <div className="w-12 h-12 rounded bg-background-base border border-accent-cyan/40 text-accent-cyan flex items-center justify-center mb-3">
+            <Shield className="w-6 h-6" />
           </div>
           <h1 className="font-mono text-2xl font-bold tracking-wider text-text-primary">
             AUDIT<span className="text-accent-cyan">MIND</span>
@@ -254,7 +128,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-accent-cyan/10 hover:bg-accent-cyan/20 border border-accent-cyan/30 hover:border-accent-cyan text-accent-cyan font-mono text-sm py-2.5 rounded flex items-center justify-center gap-2 precise-transition shadow-[0_0_15px_rgba(75,75,160,0.05)] cursor-pointer disabled:opacity-50"
+              className="w-full bg-accent-cyan/10 hover:bg-accent-cyan/20 border border-accent-cyan/30 hover:border-accent-cyan text-accent-cyan font-mono text-sm py-2.5 rounded flex items-center justify-center gap-2 precise-transition cursor-pointer disabled:opacity-50"
             >
               {loading ? 'Sending code...' : 'Send Verification OTP'}
               <ArrowRight className="w-4 h-4" />
@@ -263,7 +137,7 @@ export default function Login() {
         ) : (
           <form onSubmit={handleVerifyCode} className="space-y-4">
             <div className="bg-risk-low/10 border border-risk-low/20 text-risk-low text-xs p-3 rounded font-mono flex gap-2 mb-2">
-              <CheckCircle2 className="w-4 h-4 shrink-0 animate-bounce" />
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
               <span>OTP code sent to {email}. Check your email inbox.</span>
             </div>
 
@@ -337,12 +211,22 @@ export default function Login() {
           Sign In with Google
         </button>
 
-        <button
-          onClick={handleBypass}
-          className="w-full bg-overlay/5 hover:bg-overlay/10 border border-overlay/10 hover:border-overlay/20 text-text-secondary hover:text-text-primary font-mono text-xs py-2 rounded precise-transition cursor-pointer"
-        >
-          Bypass (Developer Mode)
-        </button>
+        {/* Demo login only exists when no auth provider is configured:
+            with Supabase set up the button is hidden — it used to render
+            in production and do nothing but throw when clicked. */}
+        {!supabase && (
+          <>
+            <button
+              onClick={handleBypass}
+              className="w-full bg-overlay/5 hover:bg-overlay/10 border border-overlay/10 hover:border-overlay/20 text-text-secondary hover:text-text-primary font-mono text-xs py-2 rounded precise-transition cursor-pointer"
+            >
+              Continue with a demo account
+            </button>
+            <p className="mt-2 text-center text-[10px] font-mono text-text-muted">
+              Demo mode only — no account is created and nothing is saved to a server.
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

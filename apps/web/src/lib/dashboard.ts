@@ -4,12 +4,28 @@ export type RiskBucket = 'critical' | 'high' | 'medium' | 'low';
 
 /** Risk bucket matching the distribution chart thresholds. One function
  * serves the stat card, the chart and the list filter, so the three can
- * never drift apart again (round 6 fixed the card counting >= 70). */
+ * never drift apart again (round 6 fixed the card counting >= 70).
+ * A missing or non-finite score is not a reviewed low risk — it is the
+ * unreviewed placeholder, so it lands in Low like a 0, never anywhere
+ * higher. */
 export function riskBucket(score: number): RiskBucket {
+  if (!Number.isFinite(score)) return 'low';
   if (score >= 75) return 'critical';
   if (score >= 50) return 'high';
   if (score >= 25) return 'medium';
   return 'low';
+}
+
+/** Whether a contract matches a risk-level list filter. An unreviewed
+ * contract has no reviewed risk: its placeholder score of 0 would put it
+ * in Low, so the filter must not list it under any level — only completed
+ * analyses have a risk level to filter on. */
+export function matchesRiskFilter(
+  contract: Pick<Contract, 'status' | 'overallRiskScore'>,
+  riskFilter: RiskBucket | 'all',
+): boolean {
+  if (riskFilter === 'all') return true;
+  return contract.status === 'completed' && riskBucket(contract.overallRiskScore) === riskFilter;
 }
 
 export interface TrendPoint {
@@ -54,19 +70,17 @@ export function buildTrendData(
 
 export type RiskCounts = Record<RiskBucket, number>;
 
-/** Clause counts per risk bucket for the distribution chart. Low counts
- * completed contracts only: every other status still carries its
- * placeholder score of 0, which would otherwise inflate the Low bar
- * with contracts that were never reviewed. High and above cannot come
- * from a placeholder score, so they count any status. */
+/** Clause counts per risk bucket for the distribution chart. Completed
+ * analyses only: every other status is unreviewed, so its score is a
+ * placeholder, not a finding — a failed run must not land in High or
+ * Critical just because it once carried a score. */
 export function countByRiskBucket(
   contracts: Pick<Contract, 'status' | 'overallRiskScore'>[],
 ): RiskCounts {
   const counts: RiskCounts = { critical: 0, high: 0, medium: 0, low: 0 };
   for (const contract of contracts) {
-    const bucket = riskBucket(contract.overallRiskScore);
-    if (bucket === 'low' && contract.status !== 'completed') continue;
-    counts[bucket] += 1;
+    if (contract.status !== 'completed') continue;
+    counts[riskBucket(contract.overallRiskScore)] += 1;
   }
   return counts;
 }

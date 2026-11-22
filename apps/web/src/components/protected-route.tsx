@@ -12,17 +12,16 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   if (loading) {
     return (
       <div className="min-h-screen bg-background-base flex flex-col items-center justify-center gap-6">
-        {/* Animated logo pulse */}
+        {/* Loading state: spinner + progress bar only. */}
         <div className="relative">
           <div className="w-12 h-12 rounded-xl bg-accent-cyan/10 border border-accent-cyan/20 flex items-center justify-center">
             <div className="w-5 h-5 rounded border-2 border-accent-cyan/40 border-t-accent-cyan animate-spin" />
           </div>
-          <div className="absolute inset-0 rounded-xl bg-accent-cyan/5 animate-ping" style={{ animationDuration: '2s' }} />
         </div>
 
         {/* Status text */}
         <div className="text-center space-y-1">
-          <p className="font-mono text-xs text-accent-cyan uppercase tracking-[0.2em] animate-pulse">
+          <p className="font-mono text-xs text-accent-cyan uppercase tracking-[0.2em]">
             Verifying Session
           </p>
           <p className="font-mono text-[10px] text-text-muted uppercase tracking-widest">

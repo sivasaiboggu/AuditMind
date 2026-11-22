@@ -1,21 +1,21 @@
-# AuditMind ⚖️
+# AuditMind
 
 AuditMind is a contract-review prototype. It extracts clauses, applies review rules and connects retrieval and explanation services. Outputs need human review and are not legal advice. Production readiness, legal accuracy and performance improvements have not been established.
 
 ---
 
-## 🌟 Key Features
+## Key Features
 
-*   **⚡ Real-Time Parallel Pipeline:** Ingests agreements (PDF, DOCX) and processes clauses concurrently. No controlled latency benchmark is included.
-*   **🧠 Localized Hybrid Classification:** Uses uncalibrated review rules by default. An explicitly enabled, locally available model with named legal-risk labels may be used; a generic relevance score is never mapped to legal risk.
-*   **📊 Interactive Compliance Dashboard:** Displays dynamic risk trends over time and risk allocations directly synchronized with Supabase database events.
-*   **🖋️ AI-Powered Proposal redlines:** Offers detailed clause risk explanations and suggested redlines backed by Gemini model reasoning.
-*   **📄 Review workspace:** Search and filter clauses by risk, compare any two clauses side by side, move through the list with the arrow keys, and export a Markdown risk report for the contract. Each clause also shows general next steps for its risk level.
-*   **🔒 Background Processing:** Uses optional Upstash Redis REST or an in-memory queue. Crash recovery, durable acknowledgement and exactly-once execution are not implemented.
+*   **Parallel pipeline:** Ingests agreements (PDF, DOCX) and processes clauses concurrently. No controlled latency benchmark is included.
+*   **Localized hybrid classification:** Uses uncalibrated review rules by default. An explicitly enabled, locally available model with named legal-risk labels may be used; a generic relevance score is never mapped to legal risk.
+*   **Interactive compliance dashboard:** Displays dynamic risk trends over time and risk allocations directly synchronized with Supabase database events.
+*   **Proposal redlines:** Offers detailed clause risk explanations and suggested redlines backed by Gemini model reasoning.
+*   **Review workspace:** Search and filter clauses by risk, compare any two clauses side by side, move through the list with the arrow keys, and export a Markdown risk report for the contract. Each clause also shows general next steps for its risk level.
+*   **Background processing:** Jobs are claimed from a durable database job ledger with bounded retries (see `supabase/migrations/20261025000002_durable_contract_jobs.sql` and `20261025000003_bounded_job_retries.sql`). There is no Redis queue.
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 AuditMind is built as a TypeScript monorepo containing three core components:
 
@@ -25,14 +25,13 @@ AuditMind is built as a TypeScript monorepo containing three core components:
 
 ---
 
-## 🚀 Setup & Installation
+## Setup & Installation
 
 ### 1. Prerequisites
 Make sure you have installed:
 *   [Node.js (v18+)](https://nodejs.org/)
 *   [Python (v3.10+)](https://www.python.org/)
 *   [Supabase Account & Database](https://supabase.com/)
-*   [Upstash Redis Store](https://upstash.com/)
 
 Python commands use the project virtual environment on Windows, Linux, and macOS.
 The setup command uses `py -3` on Windows and `python3` elsewhere. Set the `PYTHON`
@@ -49,9 +48,6 @@ SUPABASE_SERVICE_ROLE_KEY=<your-supabase-service-role-key>
 VITE_SUPABASE_URL=https://<your-project-id>.supabase.co
 VITE_SUPABASE_ANON_KEY=<your-supabase-anon-key>
 
-UPSTASH_REDIS_REST_URL=https://<your-redis-id>.upstash.io
-UPSTASH_REDIS_REST_TOKEN=<your-upstash-token>
-
 GEMINI_API_KEY=<your-google-gemini-key>
 ML_SERVICE_URL=http://localhost:8000
 ```
@@ -66,7 +62,7 @@ No live database migration or policy verification has been performed.
 
 ---
 
-## 💻 Running Locally
+## Running Locally
 
 To start the entire monorepo in developer mode:
 
@@ -89,7 +85,7 @@ npm run test:scripts
 
 ---
 
-## 🛡️ License
+## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 

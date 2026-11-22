@@ -6,10 +6,11 @@ export type ButtonVariant = 'primary' | 'outline' | 'ghost' | 'danger' | 'subtle
 export type ButtonSize = 'sm' | 'md' | 'lg' | 'icon';
 
 const variants: Record<ButtonVariant, string> = {
-  // Solid brand button: white text on the indigo accent in both themes,
-  // so the label stays readable where the old tinted style was a ghost.
+  // Solid brand button: the label uses the page background colour, which
+  // reads on the teal accent in both themes (white on the dark-theme
+  // teal-400 would not). No hover lift — the border and shade change.
   primary:
-    'bg-accent-cyan text-white hover:bg-accent-cyan/90 active:bg-accent-cyan border border-accent-cyan shadow-card hover:shadow-lift',
+    'bg-accent-cyan text-background-base hover:bg-accent-cyan/90 active:bg-accent-cyan border border-accent-cyan shadow-card',
   outline:
     'border border-overlay/10 bg-transparent text-text-secondary hover:text-text-primary hover:bg-overlay/5 hover:border-overlay/20',
   ghost:

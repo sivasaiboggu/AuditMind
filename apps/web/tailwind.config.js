@@ -11,8 +11,8 @@ export default {
     extend: {
       colors: {
         // Theme tokens resolve to CSS variables defined in index.css.
-        // `background` / `text` / `overlay` switch between the light and
-        // dark token sets; accent and risk hues are identical in both.
+        // `background` / `text` / `overlay` / `accent` switch between the
+        // light and dark token sets; risk hues are identical in both.
         background: {
           base: 'rgb(var(--bg-base) / <alpha-value>)',
           panel: 'rgb(var(--bg-panel) / <alpha-value>)',
@@ -21,12 +21,12 @@ export default {
         // Subtle tint used for translucent surfaces and hairline borders:
         // white in dark mode, dark slate in light mode.
         overlay: 'rgb(var(--overlay) / <alpha-value>)',
+        // One accent, a theme token: teal-700 on paper, teal-400 on ink.
+        // The indigo/violet pair is gone — it read as the default
+        // purple-blue SaaS accent. Risk hues are the only other colours.
         accent: {
-          cyan: '#4B4BA0',
-          brand: '#4B4BA0',
-          tertiary: '#8F47AE',
-          teal: '#0D9488',
-          blue: '#3B82F6',
+          cyan: 'rgb(var(--accent) / <alpha-value>)',
+          brand: 'rgb(var(--accent) / <alpha-value>)',
         },
         risk: {
           critical: '#EF4444',
@@ -41,8 +41,11 @@ export default {
         },
       },
       fontFamily: {
+        // One superfamily (see docs/design-references-1.0.6.md): IBM Plex
+        // Sans for everything sans, IBM Plex Mono for labels, IDs, scores
+        // and shortcuts. Inter / JetBrains Mono are out.
         sans: [
-          'Inter',
+          'IBM Plex Sans',
           '-apple-system',
           'BlinkMacSystemFont',
           '"Segoe UI"',
@@ -50,26 +53,9 @@ export default {
           'Helvetica',
           'Arial',
           'sans-serif',
-          '"Apple Color Emoji"',
-          '"Segoe UI Emoji"',
-          '"Segoe UI Symbol"'
         ],
-        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+        mono: ['IBM Plex Mono', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
       },
-      animation: {
-        'pulse-subtle': 'pulseSubtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        shimmer: 'shimmer 1.5s linear infinite',
-      },
-      keyframes: {
-        pulseSubtle: {
-          '0%, 100%': { opacity: '1' },
-          '50%': { opacity: '0.6' },
-        },
-        shimmer: {
-          '0%': { backgroundPosition: '200% 0' },
-          '100%': { backgroundPosition: '-200% 0' },
-        },
-      }
     },
   },
   plugins: [],

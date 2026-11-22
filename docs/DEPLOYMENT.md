@@ -11,7 +11,7 @@ AuditMind is designed as a distributed monorepo hosted across three cloud platfo
 - **Orchestration API (Fastify Node):** Hosted on **Railway**
 - **Legal-NLP Service (FastAPI Python):** Hosted on **Render** (CPU-instance scale)
 - **Database & Storage:** Hosted on **Supabase** (Postgres + pgvector + Auth + Storage Buckets)
-- **Background Queue:** Hosted on **Upstash Redis** (or a Redis instance on Railway)
+- **Background Queue:** No separate queue service. Jobs are claimed from a durable job ledger in Supabase (`supabase/migrations/20261025000002_durable_contract_jobs.sql`, bounded retries in `20261025000003_bounded_job_retries.sql`).
 
 ---
 
@@ -29,12 +29,11 @@ Ensure the following variables are configured on each target platform:
 - `PORT`: `3000` (Fastify listening port).
 - `SUPABASE_URL`: Your Supabase project URL.
 - `SUPABASE_SERVICE_ROLE_KEY`: Service role secret key (required to bypass Row-Level Security for ingestion writing).
-- `REDIS_URL`: Connection string to your Redis database (e.g., `redis://default:password@host:port`).
 - `GEMINI_API_KEY`: Google AI Studio API Key (used for `text-embedding-004` and `gemini-2.5-flash`/`pro`).
 - `ML_SERVICE_URL`: The URL of your deployed Render Python microservice (e.g. `https://auditmind-ml.onrender.com`).
 
 ### 2.3. Python ML Service (Render)
-- `MODEL_NAME`: The Hugging Face model identifier for clause classification (defaults to `cross-encoder/ms-marco-MiniLM-L-2-v2`).
+- `MODEL_NAME`: Hugging Face model identifier for clause classification. No default model is downloaded; set it together with `ENABLE_RISK_MODEL=true` only for a reviewed local model whose config declares exactly the `low`, `medium`, `high`, `critical` labels. Without it the service uses its heuristic review rules.
 - `PORT`: `8000` (FastAPI uvicorn port).
 
 ---
@@ -44,12 +43,12 @@ Ensure the following variables are configured on each target platform:
 1. **Database Schema:**
    - Log into your Supabase control panel.
    - Go to the **SQL Editor**.
-   - Copy the contents of `supabase/migrations/20260630000000_init_schema.sql` and run them to initialize tables, pgvector configurations, indices, and RLS policies.
+   - Apply the ordered migrations in `supabase/migrations/` in filename order. Read `docs/DATABASE-VERIFICATION.md` first: the baseline no longer drops tables, and an existing project needs a schema and policy inventory, backup and reviewed additive rollout, not a blind replay.
 
 2. **Embedding Seed Data:**
-   - Run the seed script to fill the regulatory vector corpus table:
+   - Run the seed script to fill the regulatory vector corpus table (it reads `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and `GEMINI_API_KEY` from `apps/api/.env`):
      ```bash
-     npm run seed --workspace=supabase
+     npx tsx supabase/seed/seed_corpus.ts
      ```
 
 3. **Storage Bucket Config:**

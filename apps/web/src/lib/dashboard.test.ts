@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Contract } from '@auditmind/shared-types';
-import { buildTrendData, countByRiskBucket, countHighRiskCompleted, riskBucket } from './dashboard';
+import { buildTrendData, countByRiskBucket, countHighRiskCompleted, matchesRiskFilter, riskBucket } from './dashboard';
 
 const contract = (
   overrides: Partial<Pick<Contract, 'status' | 'createdAt' | 'overallRiskScore'>>,
@@ -22,6 +22,11 @@ describe('riskBucket', () => {
     assert.equal(riskBucket(25), 'medium');
     assert.equal(riskBucket(24), 'low');
     assert.equal(riskBucket(0), 'low');
+  });
+
+  it('treats a missing or non-finite score as the unreviewed placeholder, never as a real tier', () => {
+    assert.equal(riskBucket(Number.NaN), 'low');
+    assert.equal(riskBucket(Number.POSITIVE_INFINITY), 'low');
   });
 });
 
@@ -128,5 +133,33 @@ describe('countByRiskBucket', () => {
       ]),
       { critical: 1, high: 1, medium: 1, low: 1 },
     );
+  });
+
+  it('never counts an unreviewed contract in any bucket, even one carrying a high score', () => {
+    assert.deepEqual(
+      countByRiskBucket([
+        contract({ status: 'processing', overallRiskScore: 90 }),
+        contract({ status: 'failed', overallRiskScore: 80 }),
+        contract({ status: 'processing', overallRiskScore: 40 }),
+      ]),
+      { critical: 0, high: 0, medium: 0, low: 0 },
+    );
+  });
+});
+
+describe('matchesRiskFilter', () => {
+  it('matches a completed contract in its own bucket and nothing else', () => {
+    assert.equal(matchesRiskFilter(contract({ overallRiskScore: 80 }), 'critical'), true);
+    assert.equal(matchesRiskFilter(contract({ overallRiskScore: 80 }), 'high'), false);
+    assert.equal(matchesRiskFilter(contract({ overallRiskScore: 80 }), 'all'), true);
+  });
+
+  it('never matches an unreviewed contract under any risk level', () => {
+    // A processing contract's placeholder score of 0 used to list it
+    // under Low, as if it had been reviewed and found safe.
+    assert.equal(matchesRiskFilter(contract({ status: 'processing', overallRiskScore: 0 }), 'low'), false);
+    assert.equal(matchesRiskFilter(contract({ status: 'processing', overallRiskScore: 90 }), 'critical'), false);
+    assert.equal(matchesRiskFilter(contract({ status: 'failed', overallRiskScore: 60 }), 'high'), false);
+    assert.equal(matchesRiskFilter(contract({ status: 'processing', overallRiskScore: 0 }), 'all'), true);
   });
 });

@@ -1,6 +1,59 @@
 # Changelog
 All notable changes will be documented here.
 
+## 1.0.6 — 22 Nov 2026
+- Patch release (1.0.6): premium UI pass (round 9) following the design
+  playbook — references collected first (Linear, Stripe Dashboard, Attio,
+  Vercel dashboard, Typewolf, Mimesis, Page Flows, Happy Hues, Refactoring
+  UI; see docs/design-references-1.0.6.md), one typeface (IBM Plex Sans +
+  IBM Plex Mono), one accent (teal), solid surfaces throughout. Full
+  suites re-verified: API 180 passed, ML 24 passed (+61 subtests), web
+  23 passed, scripts 3 passed, 0 failed.
+- Logic fix: `validateContractHeuristic` counted keywords by substring,
+  so "marshall" counted as "shall" and "partying" as "party". It now
+  matches whole words (regex via the existing `escapeRegExp`), with a
+  new contract-validation test suite.
+- Logic fix: unreviewed contracts leaked into every risk count and
+  filter — a processing contract's placeholder score of 0 listed it
+  under Low, and the dashboard average could include non-finite scores.
+  Risk filters, bucket counts and the average now consider completed
+  analyses only, and the API coerces a stored `overall_risk_score` to
+  0–100 instead of passing null through (which rendered as "null%").
+- Copy: marketing wording removed from user-facing text ("Next-Gen
+  Legal AI Platform", "AI-powered", "Enterprise-grade", "secure vaults"
+  progress copy, "INGESTION DIAGNOSTIC WARNING", emoji headings in the
+  README). The chat fallback no longer streams a warning glyph; it
+  names the missing `GEMINI_API_KEY` in plain words. The demo login is
+  hidden when auth is configured (it used to render in production and
+  throw when clicked).
+- Config: `@upstash/redis`, `bullmq` and `ioredis` were imported nowhere
+  — removed from the API package and lockfile (19 packages). The README
+  and deployment doc now describe the durable database job ledger
+  instead of a Redis queue that never existed, and the seed command and
+  `MODEL_NAME` default in the docs are corrected.
+- UI: landing rebuilt from the references — left-aligned hero, one
+  statement, three numbered steps with dividers, what-you-get and
+  limits as plain lists; no gradient, pill, canvas or dot grid. Login
+  and navbar lost their animated canvases and frosted panels; the
+  loading screen lost its ping ring and pulsing text; skeletons are
+  static blocks, not shimmer; dashboard lists no longer stagger in and
+  stat cards no longer lift. All surfaces are solid panels with a
+  hairline border; numbers that get compared use tabular figures.
+- UI: dashboard stat captions no longer repeat the card title and wrap
+  ("Total Contracts · 3 analysed" is now "3 analysed"), and the risk
+  trend now draws a dot for a lone monthly average, which previously
+  rendered as an empty chart.
+- Tests: a copy-guard test scans web/API sources, the README, page meta
+  and package descriptions and fails on emoji, banned marketing words,
+  decorative symbols, `backdrop-blur` and staggered-entrance patterns.
+- Renders: the screenshot harness was rewritten (scripts/shots.mjs) —
+  demo and live modes with a stub API and seeded session, per-load
+  readiness markers, a timeout on every CDP call, and a random debug
+  port. Ten fresh renders in docs/screenshots-1.0.6/, read and checked
+  by hand. The harness blocks Google Fonts hosts only (the VM's egress
+  proxy hangs that stylesheet, which blocks module execution), so
+  renders use fallback fonts; the product keeps its real font link.
+
 ## 1.0.5 — 21 Nov 2026
 - Patch release (1.0.5): premium UI pass (round 8) plus a senior logic
   review. Full suites re-verified: API 172 passed, ML 24 passed
