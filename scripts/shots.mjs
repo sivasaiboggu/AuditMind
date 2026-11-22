@@ -124,6 +124,7 @@ const base = `http://127.0.0.1:${await listen(site, 0)}`;
 let browser;
 const errors = [];
 const auditFailures = [];
+let auditedStates = 0;
 
 async function open({ authed = false, width = 1440, theme = 'light' } = {}) {
   const context = await browser.newContext({
@@ -155,8 +156,10 @@ async function check(page, name) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   assert.equal(overflow, false, `Horizontal overflow at ${name}`);
   const result = await new AxeBuilder({ page }).analyze();
+  auditedStates += 1;
   for (const finding of result.violations) {
-    auditFailures.push(`${name}: ${finding.id}: ${finding.nodes.map((node) => node.target.join(' ')).join(', ')}`);
+    const details = finding.nodes.map((node) => `${node.target.join(' ')}\n${node.failureSummary ?? ''}`);
+    auditFailures.push(`${name}: ${finding.id}\n${details.join('\n')}`);
   }
 }
 
@@ -378,6 +381,7 @@ try {
   }
   assert.deepEqual(errors, [], 'Uncaught browser errors');
   assert.deepEqual(auditFailures, [], 'Automated accessibility findings');
+  if (auditedStates > 0) console.log(`${auditedStates} page states passed axe and viewport checks.`);
 } finally {
   await browser?.close();
   for (const socket of sockets.clients) socket.terminate();
