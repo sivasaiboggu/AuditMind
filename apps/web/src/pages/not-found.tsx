@@ -1,51 +1,23 @@
+import { ArrowLeft } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { FileQuestion, ArrowLeft } from 'lucide-react';
+import { SiteFooter, SiteHeader } from '../components/SiteHeader';
 
 export default function NotFound() {
   return (
-    <div className="min-h-screen bg-background-base flex items-center justify-center p-8">
-      <div className="max-w-md w-full text-center space-y-8">
-        <div className="relative">
-          <p className="font-mono text-[120px] font-black leading-none select-none text-accent-cyan">
-            404
-          </p>
-        </div>
-
-        <div className="space-y-3">
-          <div className="flex items-center justify-center gap-2">
-            <FileQuestion className="w-5 h-5 text-text-muted" />
-            <h1 className="font-mono text-sm font-bold text-text-primary uppercase tracking-widest">
-              Page Not Found
-            </h1>
+    <div className="public-shell">
+      <SiteHeader />
+      <main id="main-content" tabIndex={-1} className="frame page-stack entry-layout">
+        <div className="entry-lead">
+          <p className="eyebrow">Error 404</p>
+          <h1 className="page-title">Page not found</h1>
+          <p className="lede">Check the address, or return to your contracts.</p>
+          <div className="flex flex-wrap gap-3">
+            <Link to="/dashboard" className="action action-primary">Go to contracts</Link>
+            <button type="button" onClick={() => window.history.back()} className="action action-outline"><ArrowLeft size={16} aria-hidden="true" /> Go back</button>
           </div>
-          <p className="text-sm font-sans text-text-secondary leading-relaxed">
-            The page you're looking for doesn't exist or has been moved. Double-check the URL or navigate back to the dashboard.
-          </p>
         </div>
-
-        {/* Decorative divider */}
-        <div className="flex items-center gap-4">
-          <div className="flex-1 h-px bg-overlay/5" />
-          <span className="font-mono text-[10px] text-text-muted uppercase tracking-widest">AuditMind</span>
-          <div className="flex-1 h-px bg-overlay/5" />
-        </div>
-
-        <div className="flex flex-col sm:flex-row gap-3 justify-center">
-          <Link
-            to="/dashboard"
-            className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-accent-cyan/10 hover:bg-accent-cyan/20 border border-accent-cyan/30 hover:border-accent-cyan text-accent-cyan font-mono text-xs font-bold uppercase tracking-wider rounded-lg transition-all duration-200"
-          >
-            Go to Dashboard
-          </Link>
-          <button
-            onClick={() => window.history.back()}
-            className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-overlay/3 hover:bg-overlay/5 border border-overlay/10 hover:border-overlay/20 text-text-secondary font-mono text-xs uppercase tracking-wider rounded-lg transition-all duration-200"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            Go Back
-          </button>
-        </div>
-      </div>
+      </main>
+      <SiteFooter />
     </div>
   );
 }

@@ -1,117 +1,48 @@
-# AuditMind Design System Spec
+# AuditMind design system
 
-This document records the visual identity tokens and UX criteria
-implemented for AuditMind. It describes the product as it is in 1.0.7;
-earlier revisions of this file described a cyan/indigo glassmorphic
-system that no longer exists — do not restore those tokens.
+## A margin bracket for the words that matter
 
----
+AuditMind is a web workspace for people doing an initial contract review. Its job is to take reviewers from a risk label to the source wording they need to read. The margin bracket marks evidence on the landing example and in clause review. It also marks the selected row in the clause index. When a stored clause has matched terms, the reading pane underlines them in context and lists them below the source. An older clause uses the same reading layout and shows its saved score and explanation when available.
 
-## 1. Signature idea — the evidence line
+## Color
 
-Every risk score is shown with the exact words that earned it. The
-pipeline stores the matched words with each clause (`matched_terms`,
-see `supabase/migrations/20261025000004_clause_matched_terms.sql`); the
-review UI repeats them in one mono line — `Matched: indemnify ·
-negligence` — on the clause card, the analysis tab, the compare tab and
-the exported report, and underlines the same words in the clause text
-itself, in the clause's risk colour. The landing shows one labelled
-sample finding the same way. A score never appears without its evidence,
-and evidence is never invented: clauses analysed before the field
-existed, and tiers that came from a model, show no evidence line.
+The 12-step warm neutral ramp runs from `#fcfbf7` to `#191814`. Light mode uses a paper base and a brighter reading surface. Dark mode uses warm charcoal and a lighter reading surface so the same hierarchy survives the theme change. Risk labels use semantic red, rust, ochre and green, always paired with words. Hairline separators organize content. The stronger control outline identifies fields and secondary buttons.
 
-## 2. Colour — OKLCH tokens, one accent
+Three accent options were considered.
 
-Tokens are OKLCH triplets (`lightness chroma hue`) in
-`apps/web/src/index.css`, resolved per theme; `apps/web/tailwind.config.js`
-maps them to `oklch(var(--token) / <alpha-value>)`. The hex each token
-was converted from is listed here as the fallback.
+- **Cobalt `#2448b7`**, selected. It reads as an editorial annotation against warm paper and stays distinct from every risk color. Dark mode uses `#a9bbff`.
+- **Deep teal `#12635e`** suggests a steady workspace and works on paper. It sits too close to the green used for low risk and success.
+- **Aubergine `#653a6d`** gives public pages a more literary tone. It competes with the critical label in a dense review.
 
-| Token | Light (hex fallback) | Dark (hex fallback) |
-| --- | --- | --- |
-| `--bg-base` | `oklch(0.984 0.004 106.5)` — `#FAFAF7` | `oklch(0.187 0.006 196.6)` — `#101414` |
-| `--bg-panel` | `oklch(1.000 0.000 89.9)` — `#FFFFFF` | `oklch(0.224 0.009 184.4)` — `#171D1C` |
-| `--bg-hover` | `oklch(0.963 0.004 106.5)` — `#F3F3F0` | `oklch(0.260 0.012 178.5)` — `#1E2624` |
-| `--text-primary` | `oklch(0.223 0.005 173.9)` — `#191C1B` | `oklch(0.947 0.008 164.9)` — `#E9EFEC` |
-| `--text-secondary` | `oklch(0.410 0.008 174.0)` — `#464C4A` | `oklch(0.729 0.012 176.2)` — `#A0AAA7` |
-| `--text-muted` | `oklch(0.553 0.009 164.7)` — `#6E7471` | `oklch(0.612 0.011 174.0)` — `#7D8683` |
-| `--overlay` (borders, tints) | `oklch(0.208 0.040 265.8)` — `#0F172A` | `oklch(1.000 0.000 89.9)` — `#FFFFFF` |
-| `--accent` | `oklch(0.511 0.086 186.4)` — `#0F766E` (teal-700) | `oklch(0.785 0.133 181.9)` — `#2DD4BF` (teal-400) |
+Cobalt is reserved for the margin, links, focus, selected navigation and primary actions. Surface areas stay neutral. Accent-colored pixels accounted for at most 1.3% of each captured after view, counting pixels within an RGB distance of 15 from either theme’s accent. The sample is a charcoal reading surface in either theme. Grain appears there alone.
 
-One accent, teal, under 10% of any screen: links, the primary button,
-the active tab underline, the score-chip border. Nothing else competes
-with it.
+[Machine-readable tokens](../apps/web/tokens.json), [CSS custom properties with OKLCH and hex fallbacks](../apps/web/src/styles/tokens.css), and the [Tailwind theme](../apps/web/tailwind.config.js) define the production palettes.
 
-### 2.1 Risk hues — per-theme, for text contrast
+## Measured contrast
 
-The bright risk hues fail WCAG AA as small text on white, so the tokens
-are per-theme: light mode uses the darker step, dark mode keeps the
-bright step. Chart fills in `dashboard.tsx` keep the bright hexes —
-fills are not text.
+Ratios use the WCAG 2.x relative-luminance formula on the sRGB fallback for each OKLCH color. For text, risk, control and focus roles the table reports the lowest ratio across the theme's base, panel and hover surfaces. The button hover row uses the 90/10 sRGB interaction mix. Separators between noninteractive regions are decorative.
 
-| Risk | Light (hex fallback) | Dark (hex fallback) |
-| --- | --- | --- |
-| `--risk-critical` | `oklch(0.505 0.190 27.5)` — `#B91C1C` | `oklch(0.637 0.208 25.3)` — `#EF4444` |
-| `--risk-high` | `oklch(0.553 0.174 38.4)` — `#C2410C` | `oklch(0.705 0.187 47.6)` — `#F97316` |
-| `--risk-medium` | `oklch(0.555 0.146 49.0)` — `#B45309` | `oklch(0.795 0.162 86.0)` — `#EAB308` |
-| `--risk-low` | `oklch(0.508 0.105 165.6)` — `#047857` | `oklch(0.696 0.149 162.5)` — `#10B981` |
+| Pair | Light | Dark | WCAG AA |
+| --- | ---: | ---: | ---: |
+| Primary text | 14.91:1 | 11.34:1 | 4.5:1 |
+| Secondary text | 6.41:1 | 7.85:1 | 4.5:1 |
+| Muted text and labels | 4.85:1 | 5.67:1 | 4.5:1 |
+| Accent text and source underlines | 6.56:1 | 6.84:1 | 4.5:1 |
+| Critical label | 5.83:1 | 6.86:1 | 4.5:1 |
+| High label | 5.97:1 | 6.83:1 | 4.5:1 |
+| Medium label | 5.77:1 | 7.34:1 | 4.5:1 |
+| Low and success labels | 5.72:1 | 7.12:1 | 4.5:1 |
+| Control outlines | 3.16:1 | 3.50:1 | 3:1 |
+| Keyboard focus ring | 6.56:1 | 6.84:1 | 3:1 |
+| Primary button label | 7.64:1 | 8.46:1 | 4.5:1 |
+| Primary button label on hover | 6.07:1 | 7.12:1 | 4.5:1 |
 
-### 2.2 Contrast table (WCAG, measured from the hex fallbacks)
+## Layout, type and motion
 
-| Pair | Ratio | Verdict |
-| --- | --- | --- |
-| Light: primary text on base | 16.42:1 | AAA |
-| Light: secondary text on base | 8.39:1 | AAA |
-| Light: muted text on base | 4.56:1 | AA |
-| Light: accent on base / panel | 5.23:1 / 5.47:1 | AA |
-| Light: paper text on accent (primary button) | 5.23:1 | AA |
-| Light: critical / high / medium / low text on panel | 6.47 / 5.18 / 5.02 / 5.48:1 | AA |
-| Dark: primary text on base | 15.92:1 | AAA |
-| Dark: secondary text on base | 7.77:1 | AAA |
-| Dark: muted text on base | 4.95:1 | AA |
-| Dark: accent on base / panel | 9.96:1 / 9.18:1 | AAA |
-| Dark: ink text on accent (primary button) | 9.96:1 | AAA |
-| Dark: critical / high / medium / low text on panel | 4.54 / 6.10 / 8.91 / 6.74:1 | AA |
+- Bricolage Grotesque supplies display and reading type. IBM Plex Mono 500 supplies labels, shortcuts and metadata. Fontsource serves local WOFF2 subsets with swap. Display sizes use `clamp()` and tight tracking. Reading copy is 16–18 px with a 1.6 line height and a measure of at most 68 characters.
+- Start at 16 px mobile gutters. Step to 32 px and then 48 px when the layout has room. Components use 4 px increments and section spaces use multiples of 8 px. Interactive corners use 4 px. Document edges stay square.
+- Inset hairline, sheet shadow and floating shadow are the three elevation levels. The reference sample and notifications use the floating shadow. Most workspace surfaces are flush.
+- Lucide handles action icons. The AuditMind mark takes its shape from the margin bracket and appears in the wordmark, favicon and install icons.
+- Focus is a visible 2 px outline. Buttons acknowledge press with a 1 px shift over 180 ms. Notifications enter over 220 ms with a short opacity and transform change. Routing puts focus back in the new page and paints immediately. Skeletons are static and the upload meter uses server progress. Reduced-motion settings suppress transitions.
 
-The pre-1.0.7 bright hues as light-mode text were 3.76:1 (critical) and
-2.80:1 (high) — below AA for small text. That is what the per-theme
-tokens fix.
-
-## 3. Typography
-
-- **Sans (display + text):** IBM Plex Sans 400/500/600/700. One
-  superfamily; Inter and JetBrains Mono are out.
-- **Mono (labels, IDs, scores, shortcuts, matched words):** IBM Plex
-  Mono 400/500/600.
-- **Display:** `.display-lg`, fluid `clamp(2.25rem, 4.5vw, 3.5rem)`,
-  line-height 1.05, tracking -0.02em.
-- **Body:** 16px at 1.6 line height, max 68ch. Numbers that get compared
-  use tabular figures (`.tnum`); keyboard hints use the `.kbd` chip.
-
-## 4. Surfaces, elevation, focus
-
-- Solid panels with a hairline border (`border-overlay/5`) and one faint
-  shadow (`--shadow-card`). No glass, no backdrop blur, no glows, no dot
-  grids.
-- Cards are 12px radius (`.rounded-xl`); badges are pills
-  (`rounded-full`). One shadow level for resting cards; no hover lift.
-- Focus: 2px outline in `--ring` with 2px offset on every focusable
-  element (`:focus-visible`).
-
-## 5. Motion — state changes only
-
-- 250ms `cubic-bezier(0.16, 1, 0.3, 1)` for hover/border/focus changes
-  (`.precise-transition`); 250ms fade-in for the upload banner.
-- The only other motion is progress fills, the loading bar, and the
-  typing dots while an answer streams. No staggered entrances, no
-  shimmer, no hover lifts, no pulsing orbs. `prefers-reduced-motion`
-  collapses all of it to 0.01ms.
-
-## 6. Icons and copy
-
-- Lucide only, small and in flow — no icon tiles, no icon as decoration,
-  no emoji or decorative symbols (enforced by the copy-guard test).
-- Plain human words; numbers are real numbers from real data, or the UI
-  says plainly that a value is demo/sample. Empty states say what to do
-  next. No "seamless", "supercharge", "elevate", "unlock", "AI-powered",
-  or other marketing clichés (also copy-guard enforced).
+[Screen plans, setup and launch checklist](redesign/review-desk.md)

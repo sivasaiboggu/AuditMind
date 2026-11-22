@@ -6,26 +6,18 @@ export type ButtonVariant = 'primary' | 'outline' | 'ghost' | 'danger' | 'subtle
 export type ButtonSize = 'sm' | 'md' | 'lg' | 'icon';
 
 const variants: Record<ButtonVariant, string> = {
-  // Solid brand button: the label uses the page background colour, which
-  // reads on the teal accent in both themes (white on the dark-theme
-  // teal-400 would not). No hover lift — the border and shade change.
-  primary:
-    'bg-accent-cyan text-background-base hover:bg-accent-cyan/90 active:bg-accent-cyan border border-accent-cyan shadow-card',
-  outline:
-    'border border-overlay/10 bg-transparent text-text-secondary hover:text-text-primary hover:bg-overlay/5 hover:border-overlay/20',
-  ghost:
-    'border border-transparent bg-transparent text-text-secondary hover:text-text-primary hover:bg-overlay/5',
-  danger:
-    'bg-risk-critical/10 text-risk-critical border border-risk-critical/30 hover:bg-risk-critical/20 hover:border-risk-critical',
-  subtle:
-    'bg-overlay/5 text-text-secondary border border-overlay/10 hover:bg-overlay/10 hover:text-text-primary',
+  primary: 'action-primary',
+  outline: 'action-outline',
+  ghost: 'action-ghost',
+  danger: 'action-danger',
+  subtle: 'action-outline bg-background-base',
 };
 
 const sizes: Record<ButtonSize, string> = {
-  sm: 'px-3 py-1.5 min-h-8 text-xs',
-  md: 'px-4 py-2 min-h-11 text-xs sm:text-sm',
-  lg: 'px-6 py-3 text-sm',
-  icon: 'h-9 w-9 p-0',
+  sm: 'min-h-10 px-3 text-sm',
+  md: '',
+  lg: 'min-h-12 px-6',
+  icon: 'size-11 p-0',
 };
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -35,17 +27,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ variant = 'primary', size = 'md', className, type = 'button', ...props }, ref) => (
-    <button
-      ref={ref}
-      type={type}
-      className={cn(
-        'inline-flex items-center justify-center gap-2 rounded font-mono font-bold uppercase tracking-wider precise-transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed',
-        variants[variant],
-        sizes[size],
-        className,
-      )}
-      {...props}
-    />
+    <button ref={ref} type={type} className={cn('action', variants[variant], sizes[size], className)} {...props} />
   ),
 );
 Button.displayName = 'Button';

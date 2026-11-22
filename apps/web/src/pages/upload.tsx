@@ -2,12 +2,13 @@ import { workspaceGuard } from '../lib/workspace-guard';
 import { authenticatedFetch, sendAuthenticated } from '../lib/api';
 import { ACCEPTED_EXTENSIONS, FILE_SIZE_LIMIT_BYTES, FILE_SIZE_LIMIT_MB } from '../lib/constants';
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useContractStore } from '../store/contractStore';
 import { useAuth } from '../lib/auth-context';
 import { Navbar } from '../components/Navbar';
 import { Button } from '../components/ui';
-import { Upload, ArrowLeft, Terminal } from 'lucide-react';
+import { ArrowLeft, FileUp } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3000/ws';
@@ -18,21 +19,20 @@ export default function UploadPage() {
   const { isAnalyzing, setIsAnalyzing, progress, setProgress, setActiveContract } = useContractStore();
   const [isDragOver, setIsDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   const acceptanceUnknown = useRef(false);
   const uploadEpoch = useRef(0);
-  const uploadTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const uploadAbort = useRef<AbortController | null>(null);
   useEffect(() => {
     const ownerCurrent = workspaceGuard();
     return () => {
-    ++uploadEpoch.current;
-    if (uploadTimer.current) clearInterval(uploadTimer.current);
-    uploadAbort.current?.abort();
-    wsRef.current?.close();
-    wsRef.current = null;
-    if (ownerCurrent()) { setIsAnalyzing(false); setProgress(null); }
+      ++uploadEpoch.current;
+      uploadAbort.current?.abort();
+      wsRef.current?.close();
+      wsRef.current = null;
+      if (ownerCurrent()) { setIsAnalyzing(false); setProgress(null); }
     };
   }, [user?.id]);
 
@@ -54,7 +54,7 @@ export default function UploadPage() {
     if (useContractStore.getState().isAnalyzing || acceptanceUnknown.current) return;
     const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
     if (file.size === 0 || file.size > FILE_SIZE_LIMIT_BYTES || !ACCEPTED_EXTENSIONS.includes(extension as '.pdf' | '.docx' | '.txt')) {
-      setError(`Choose a nonempty PDF, DOCX or TXT file no larger than ${FILE_SIZE_LIMIT_MB}MB.`);
+      setError(`Choose a nonempty PDF, DOCX or TXT file no larger than ${FILE_SIZE_LIMIT_MB} MB.`);
       return;
     }
     const epoch = ++uploadEpoch.current;
@@ -67,31 +67,14 @@ export default function UploadPage() {
     setProgress({
       contractId: '',
       stage: 'pending',
-      message: 'Uploading document…',
-      percent: 5
+      message: 'Uploading contract…',
+      percent: 0
     });
 
-    let timer: ReturnType<typeof setInterval> | null = null;
-    let uploadPercent = 5;
     let requestStarted = false;
     let definiteRejection = false;
 
     try {
-      // Smoothly animate the loading percentage during the network payload upload
-      timer = uploadTimer.current = setInterval(() => {
-        if (!current()) return;
-        if (uploadPercent < 45) {
-          uploadPercent += 3;
-          setProgress({
-            contractId: '',
-            stage: 'pending',
-            message: 'Uploading contract…',
-            percent: uploadPercent
-          });
-        }
-      }, 300);
-
-      // 1. Send file via multipart Form Data to Fastify API
       const formData = new FormData();
       formData.append('file', file);
 
@@ -102,7 +85,6 @@ export default function UploadPage() {
         signal: controller.signal
       });
 
-      if (timer) clearInterval(timer);
       if (!current()) return;
 
       if (!response.ok) {
@@ -171,7 +153,6 @@ export default function UploadPage() {
       ws.onclose = interrupted;
 
     } catch (err: any) {
-      if (timer) clearInterval(timer);
       if (!current()) return;
       console.error('Contract upload could not be confirmed.');
       setIsAnalyzing(false);
@@ -205,103 +186,76 @@ export default function UploadPage() {
     }
   };
 
+  const demo = !supabase;
+  const uploadBlocked = acceptanceUnknown.current || demo;
+  const percent = progress?.contractId ? Math.min(100, Math.max(0, progress.percent)) : undefined;
+
   return (
-    <div className="min-h-screen bg-background-base flex flex-col">
-      <Navbar currentView="analyzer" setView={(v) => navigate(v === 'dashboard' ? '/dashboard' : useContractStore.getState().activeContract ? `/contract/${useContractStore.getState().activeContract!.id}` : '/upload')} onLogout={handleLogout} />
-      
-      <main className="flex-grow max-w-3xl mx-auto px-6 py-12 w-full flex flex-col justify-center">
-        <div className="mb-6 flex items-center gap-2">
-          <button
-            onClick={() => navigate('/dashboard')}
-            aria-label="Back to dashboard"
-            className="p-1.5 rounded hover:bg-overlay/5 border border-transparent hover:border-overlay/10 text-text-secondary hover:text-text-primary precise-transition"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <span className="text-xs font-sans text-text-secondary font-medium">Back to dashboard</span>
-        </div>
-
-        <div className="bg-background-panel p-8 rounded border border-overlay/5 space-y-6">
-          <div>
-            <h2 className="text-xl font-sans font-medium text-text-primary tracking-tight">
-              Upload contract
-            </h2>
-            <p className="text-sm text-text-secondary font-sans mt-1">
-              Choose a contract file to analyze risk.
-            </p>
-          </div>
-
-          {error && (
-            <div className="bg-risk-critical/10 border border-risk-critical/30 rounded p-4 text-xs font-mono text-risk-critical flex gap-3 items-start relative animate-fade-in">
-              <Terminal className="w-5 h-5 shrink-0 mt-0.5" />
-              <div className="flex-grow space-y-1.5">
-                <div className="font-bold text-sm tracking-tight">Upload failed</div>
-                <div className="leading-relaxed text-text-primary/95">{error}</div>
-              </div>
-              <button
-                onClick={() => setError(null)}
-                aria-label="Dismiss error"
-                className="text-[10px] text-text-muted hover:text-text-primary uppercase tracking-widest font-bold precise-transition"
-              >
-                Dismiss
-              </button>
+    <div className="min-h-screen">
+      <Navbar onLogout={handleLogout} />
+      <main id="main-content" tabIndex={-1} className="frame page-stack">
+        <header className="entry-lead">
+          <Link to="/dashboard" className="inline-flex min-h-10 items-center gap-2 text-sm font-medium text-text-secondary hover:text-accent-brand">
+            <ArrowLeft size={16} aria-hidden="true" /> All contracts
+          </Link>
+          <h1 className="page-title">Upload a contract</h1>
+          <p className="lede">Choose one agreement. AuditMind extracts the clauses and opens your review when analysis finishes.</p>
+        </header>
+        <div className="upload-layout">
+          <section className="sheet min-w-0" aria-labelledby="document-title">
+            <div className="ledger-header">
+              <h2 id="document-title" className="text-xl font-semibold tracking-tight">Contract file</h2>
+              <span className="eyebrow">One file · up to {FILE_SIZE_LIMIT_MB} MB</span>
             </div>
-          )}
+            <div className="p-4 sm:p-6">
+              {error && (
+                <div className="margin-note mb-4 flex flex-wrap items-start justify-between gap-2 [--note-ink:var(--risk-critical)]">
+                  <div>
+                    <p className="font-semibold text-risk-critical">Upload needs attention</p>
+                    <p role="alert" className="reading mt-1 text-text-secondary">{error}</p>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => setError(null)} aria-label="Dismiss error">Dismiss</Button>
+                </div>
+              )}
 
-          {acceptanceUnknown.current && <div className="border border-risk-medium/30 p-4 rounded text-sm text-text-secondary space-y-3">
-            <p>Another upload is paused because the previous file may already be stored or queued.</p>
-            <Button size="sm" onClick={() => navigate('/dashboard')}>Check dashboard</Button>
-          </div>}
-          <div
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            className={`min-h-[260px] rounded border border-dashed flex flex-col items-center justify-center p-6 text-center precise-transition ${
-              isDragOver
-                ? 'border-accent-cyan bg-accent-cyan/5'
-                : 'border-overlay/10 hover:border-overlay/20 bg-background-base/30'
-            }`}
-          >
-            {isAnalyzing && progress ? (
-              <div className="space-y-4 w-full max-w-md">
-                <div className="flex justify-between text-xs font-mono">
-                  <span className="text-accent-cyan uppercase tracking-wider">{progress.message}</span>
-                  <span className="text-text-secondary">{progress.percent}%</span>
-                </div>
-                <div className="w-full bg-overlay/5 rounded-full h-1.5 overflow-hidden border border-overlay/5">
-                  <div
-                    className="bg-accent-cyan h-1.5 precise-transition"
-                    style={{ width: `${progress.percent}%` }}
-                  ></div>
-                </div>
-                <p className="text-xs font-sans text-text-secondary">
-                  Analyzing contract... Please keep this page open.
-                </p>
-              </div>
-            ) : (
-              <label className="cursor-pointer group flex flex-col items-center gap-3">
-                <input
-                  type="file"
-                  accept={ACCEPTED_EXTENSIONS.join(',')}
-                  disabled={acceptanceUnknown.current}
-                  aria-label="Choose a contract file"
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
-                <div className="w-12 h-12 rounded bg-overlay/5 border border-overlay/10 text-text-secondary group-hover:text-accent-cyan group-hover:border-accent-cyan/40 flex items-center justify-center precise-transition shadow-lg">
-                  <Upload className="w-5 h-5 precise-transition" />
-                </div>
-                <div>
-                  <p className="font-sans text-sm font-medium text-text-primary group-hover:text-accent-cyan precise-transition">
-                    Select contract document
+              {uploadBlocked ? (
+                <div className="space-y-4 py-4">
+                  <p className="reading text-text-secondary">
+                    {demo
+                      ? 'Uploading requires a configured sign-in provider. Ask the installation operator to connect one.'
+                      : 'The previous file may already be in the queue. Check the contract list before trying again.'}
                   </p>
-                  <p className="text-xs text-text-secondary font-sans mt-1">
-                    Drag and drop PDF, DOCX or TXT file (Max {FILE_SIZE_LIMIT_MB}MB)
-                  </p>
+                  <Link to="/dashboard" className="action action-outline">Go to contracts</Link>
                 </div>
-              </label>
-            )}
-          </div>
+              ) : (
+                <div className="dropzone" data-active={isDragOver} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
+                  {isAnalyzing && progress ? (
+                    <div className="grid w-full max-w-md gap-3 text-left">
+                      <div className="flex justify-between gap-3">
+                        <p className="font-semibold" role="status">{progress.message}</p>
+                        {percent !== undefined && <span className="font-mono tnum">{percent}%</span>}
+                      </div>
+                      <progress className="upload-progress" aria-label="Contract analysis progress" max={100} value={percent} />
+                      <p className="text-sm text-text-secondary">Keep this page open to go straight to the review.</p>
+                    </div>
+                  ) : (
+                    <>
+                      <FileUp size={28} strokeWidth={1.5} className="text-text-muted" aria-hidden="true" />
+                      <p className="text-xl font-semibold tracking-tight">Drop a file here</p>
+                      <p className="text-sm text-text-secondary">PDF, DOCX or TXT</p>
+                      <input ref={fileInput} type="file" accept={ACCEPTED_EXTENSIONS.join(',')} onChange={handleFileChange} hidden />
+                      <Button className="mt-2" onClick={() => fileInput.current?.click()}>Choose a file</Button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </section>
+          <aside className="margin-note self-start">
+            <h2 className="text-lg font-semibold">Before you upload</h2>
+            <p className="reading mt-2 text-text-secondary">Use a file with selectable text. If the document is a scan, run OCR first.</p>
+            <p className="reading mt-3 text-text-secondary">Only upload agreements you have permission to share. <Link to="/privacy" className="text-link">How files are handled</Link></p>
+          </aside>
         </div>
       </main>
     </div>

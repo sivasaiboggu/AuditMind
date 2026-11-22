@@ -1,6 +1,5 @@
 export { Button } from './button';
 export type { ButtonProps, ButtonVariant, ButtonSize } from './button';
-export { Card, CardHeader, CardTitle, CardContent } from './card';
 export { Badge } from './badge';
 export type { BadgeProps, BadgeTone } from './badge';
 export { Skeleton } from './skeleton';

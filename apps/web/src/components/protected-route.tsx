@@ -1,59 +1,19 @@
-import React from 'react';
+import { Fragment } from 'react';
+import type { ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth-context';
 
-interface ProtectedRouteProps {
-  children: React.ReactNode;
+export function RouteLoading({ message }: { message: string }) {
+  return (
+    <main id="main-content" tabIndex={-1} className="frame page-stack">
+      <p className="margin-note reading text-text-secondary" role="status">{message}</p>
+    </main>
+  );
 }
 
-export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
+export function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background-base flex flex-col items-center justify-center gap-6">
-        {/* Loading state: spinner + progress bar only. */}
-        <div className="relative">
-          <div className="w-12 h-12 rounded-xl bg-accent-cyan/10 border border-accent-cyan/20 flex items-center justify-center">
-            <div className="w-5 h-5 rounded border-2 border-accent-cyan/40 border-t-accent-cyan animate-spin" />
-          </div>
-        </div>
-
-        {/* Status text */}
-        <div className="text-center space-y-1">
-          <p className="font-mono text-xs text-accent-cyan uppercase tracking-[0.2em]">
-            Verifying Session
-          </p>
-          <p className="font-mono text-[10px] text-text-muted uppercase tracking-widest">
-            Stand By...
-          </p>
-        </div>
-
-        {/* Progress bar */}
-        <div className="w-48 h-0.5 bg-overlay/5 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-accent-cyan/60 rounded-full"
-            style={{
-              animation: 'loadingBar 1.5s ease-in-out infinite',
-              width: '40%',
-            }}
-          />
-        </div>
-
-        <style>{`
-          @keyframes loadingBar {
-            0% { transform: translateX(-100%); }
-            50% { transform: translateX(150%); }
-            100% { transform: translateX(400%); }
-          }
-        `}</style>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-
-  return <React.Fragment key={user.id}>{children}</React.Fragment>;
-};
+  if (loading) return <RouteLoading message="Checking your session…" />;
+  if (!user) return <Navigate to="/login" replace />;
+  return <Fragment key={user.id}>{children}</Fragment>;
+}
