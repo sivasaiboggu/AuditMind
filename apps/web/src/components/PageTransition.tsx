@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 
-export function PageTransition({ children }: { children: ReactNode }) {
+export function PageTransition({ children, animate }: { children: ReactNode; animate: boolean }) {
   const routeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -12,5 +12,5 @@ export function PageTransition({ children }: { children: ReactNode }) {
     window.scrollTo(0, 0);
   }, []);
 
-  return <div ref={routeRef} tabIndex={-1} className="outline-none">{children}</div>;
+  return <div ref={routeRef} tabIndex={-1} className={animate ? 'outline-none animate-fade-in' : 'outline-none'}>{children}</div>;
 }

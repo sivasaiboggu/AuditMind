@@ -1,4 +1,5 @@
 import type { Clause, Contract, RiskLevel } from '@auditmind/shared-types';
+import { reviewLabels } from './review';
 
 const RISK_ORDER: RiskLevel[] = ['critical', 'high', 'medium', 'low'];
 
@@ -52,6 +53,7 @@ export function buildReportMarkdown(
     '## Summary',
     '',
     `- Clauses analysed: ${clauses.length}`,
+    `- Decisions recorded: ${clauses.filter((clause) => clause.review).length} of ${clauses.length}`,
     ...RISK_ORDER.map(
       (level) => `- ${level[0].toUpperCase()}${level.slice(1)} risk: ${counts[level]}`,
     ),
@@ -81,6 +83,12 @@ export function buildReportMarkdown(
       );
       if (clause.suggestedRedline) {
         lines.push(`Suggested revision: ${clause.suggestedRedline}`, '');
+      }
+      if (clause.review) {
+        lines.push(`Review decision: ${reviewLabels[clause.review.outcome]}`, '');
+        if (clause.review.note) {
+          lines.push('Reviewer note', '', ...clause.review.note.split(/\r?\n/).map((line) => `> ${line}`), '');
+        }
       }
     }
   }

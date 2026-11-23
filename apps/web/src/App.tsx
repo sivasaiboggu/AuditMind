@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { AuthProvider } from './lib/auth-context';
 import { ThemeProvider } from './lib/theme';
@@ -25,7 +25,10 @@ const routeTitles: Record<string, string> = {
 
 function AppRoutes() {
   const { pathname } = useLocation();
+  const previousPath = useRef<string>();
+  const animate = previousPath.current !== undefined && previousPath.current !== pathname;
   useEffect(() => {
+    previousPath.current = pathname;
     const review = pathname.startsWith('/contract/');
     const path = pathname.replace(/\/$/, '') || '/';
     const title = routeTitles[path] || (review ? 'Contract review' : 'Page not found');
@@ -38,7 +41,7 @@ function AppRoutes() {
     <>
       <a href="#main-content" className="skip-link">Skip to content</a>
       <Suspense fallback={<RouteLoading message="Opening page…" />}>
-        <PageTransition key={pathname}>
+        <PageTransition key={pathname} animate={animate}>
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/login" element={<Login />} />

@@ -14,7 +14,7 @@ PSQL=(psql -X -h 127.0.0.1 -p "$PORT" -d postgres -v ON_ERROR_STOP=1)
 "${PSQL[@]}" <<'SQL'
 CREATE ROLE anon;
 CREATE ROLE authenticated;
-CREATE ROLE service_role;
+CREATE ROLE service_role BYPASSRLS;
 CREATE SCHEMA auth;
 CREATE TABLE auth.users(id uuid PRIMARY KEY,email text,raw_user_meta_data jsonb);
 CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
@@ -35,9 +35,10 @@ for st in parse_sql(s):
 (work/'core.sql').write_text('\n'.join(out))
 PY
 "${PSQL[@]}" -f "$WORK/core.sql"
-for migration in 20240101000001_profiles.sql 20260630000000_init_schema.sql 20261025000000_owner_policy_hardening.sql 20261025000001_atomic_analysis_commit.sql 20261025000002_durable_contract_jobs.sql 20261025000003_bounded_job_retries.sql 20261025000004_clause_matched_terms.sql; do
+for migration in 20240101000001_profiles.sql 20260630000000_init_schema.sql 20261025000000_owner_policy_hardening.sql 20261025000001_atomic_analysis_commit.sql 20261025000002_durable_contract_jobs.sql 20261025000003_bounded_job_retries.sql 20261025000004_clause_matched_terms.sql 20261025000005_clause_review_decisions.sql; do
  "${PSQL[@]}" -f "$ROOT/supabase/migrations/$migration"
 done
+"${PSQL[@]}" -f "$ROOT/scripts/db/verify-review.sql"
 "${PSQL[@]}" -f "$ROOT/scripts/db/verify-atomic.sql"
 # Hold the row lock during one commit and race a second session against it.
 "${PSQL[@]}" <<'SQL'

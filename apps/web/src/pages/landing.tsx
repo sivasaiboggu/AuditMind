@@ -1,74 +1,93 @@
+import { useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
-import { ArrowDown, ArrowUpRight } from 'lucide-react';
+import { ArrowDown, ArrowUpRight, FileText } from 'lucide-react';
 import { SiteFooter, SiteHeader } from '../components/SiteHeader';
 import { Badge } from '../components/ui';
 import { useAuth } from '../lib/auth-context';
-import { formatMatchedTerms, splitByMatchedTerms } from '../lib/evidence';
+import { splitByMatchedTerms } from '../lib/evidence';
 
-const sample = {
-  title: 'Limitation of liability',
-  text: 'Neither party’s total liability shall exceed the fees paid under this agreement, except for breaches of confidentiality, which carry unlimited liability.',
-  matchedTerms: ['unlimited liability', 'confidentiality'],
-  explanation: 'The exception leaves confidentiality breaches outside the liability cap.',
-};
+const samples = [
+  {
+    title: 'Limitation of liability',
+    section: 'Section 5',
+    risk: 'critical',
+    text: 'Neither party’s total liability shall exceed the fees paid under this agreement, except for breaches of confidentiality, which carry unlimited liability.',
+    terms: ['unlimited liability', 'confidentiality'],
+    explanation: 'The exception takes confidentiality breaches outside the liability cap.',
+  },
+  {
+    title: 'Governing law',
+    section: 'Section 4',
+    risk: 'high',
+    text: 'This agreement is governed by the laws of the State of Delaware, and the parties submit to the exclusive jurisdiction of its courts.',
+    terms: ['exclusive jurisdiction'],
+    explanation: 'A dispute would have to be heard in Delaware, even if both parties operate elsewhere.',
+  },
+] as const;
 
 const steps = [
-  ['Upload a contract', 'Choose a PDF, DOCX or TXT file up to 15 MB. AuditMind extracts the text and splits it into clauses.'],
-  ['Read the findings', 'Review rules score each clause. Open a finding to see the matched words, why they matter, and a suggested revision where available.'],
-  ['Check the source', 'Compare two clauses, ask a question about the contract, or export a Markdown report for your review.'],
+  ['Upload an agreement', 'Choose a PDF, DOCX or TXT file up to 15 MB. Scans need OCR before upload.'],
+  ['Read the findings', 'Check the original text, matched wording and proposed revisions where available. Compare two clauses when you need to see them together.'],
+  ['Record your decisions', 'Accept a clause as written, request a revision or escalate it with a note. Export a Markdown report for your review.'],
 ];
 
 export default function Landing() {
   const { user, loading } = useAuth();
+  const [sampleIndex, setSampleIndex] = useState(0);
+  const sample = samples[sampleIndex];
+
   if (!loading && user) return <Navigate to="/dashboard" replace />;
 
   return (
     <>
       <SiteHeader signIn />
       <main id="main-content" tabIndex={-1}>
-        <section className="frame landing-hero">
-          <div className="landing-lead">
-            <p className="eyebrow">Contract risk review</p>
-            <h1 className="display-lg">Read the<br />risk in<br />the fine print.</h1>
-            <p className="lede">See which clauses need a closer look, what raised the flag, and where it appears in the contract.</p>
-            <div className="flex flex-wrap items-center gap-3">
-              <Link to="/login" className="action action-primary">Start a review <ArrowUpRight size={18} aria-hidden="true" /></Link>
-              <a href="#how-it-works" className="action action-ghost">How it works <ArrowDown size={16} aria-hidden="true" /></a>
+        <section className="frame landing-masthead">
+          <h1 className="display-lg">Read the contract.<br />Decide what changes.</h1>
+          <div className="landing-intro">
+            <p className="lede">AuditMind pulls out contract clauses, shows what raised each flag, and keeps your decisions with the agreement.</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link to="/login" className="action action-primary">Start a review <ArrowUpRight size={17} aria-hidden="true" /></Link>
+              <a href="#how-it-works" className="action action-ghost">How it works <ArrowDown size={15} aria-hidden="true" /></a>
             </div>
           </div>
+        </section>
 
-          <figure className="dark sample-sheet grain" aria-labelledby="sample-title">
-            <div className="meta-rule">
-              <span className="eyebrow">Sample finding</span>
-              <span className="eyebrow">Mutual NDA</span>
+        <section className="frame landing-demo" aria-labelledby="sample-title">
+          <div className="sample-file">
+            <div className="sample-file-header">
+              <FileText size={18} aria-hidden="true" />
+              <h2 id="sample-title">Sample mutual NDA</h2>
             </div>
-            <div className="sample-inner">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="eyebrow">Section 5</p>
-                <Badge tone="critical">Critical risk</Badge>
-              </div>
-              <h2 id="sample-title" className="section-title mt-3">{sample.title}</h2>
-              <blockquote className="margin-note sample-quote reading mt-6 text-text-secondary">
-                {splitByMatchedTerms(sample.text, sample.matchedTerms).map((segment, index) =>
-                  segment.matched
-                    ? <strong key={index} className="font-semibold text-text-primary underline decoration-accent-brand decoration-2 underline-offset-4">{segment.text}</strong>
-                    : segment.text,
+            <div className="sample-tabs" role="group" aria-label="Sample findings">
+              {samples.map(({ title, section }, index) => (
+                <button key={title} type="button" aria-pressed={sampleIndex === index} onClick={() => setSampleIndex(index)}>
+                  <span className="eyebrow">{section}</span>
+                  <span>{title}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="sample-reading" key={sample.section}>
+            <div className="sample-paper grain">
+              <p className="eyebrow">Original clause</p>
+              <h3 className="section-title">{sample.title}</h3>
+              <blockquote className="reading">
+                {splitByMatchedTerms(sample.text, [...sample.terms]).map((segment, index) =>
+                  segment.matched ? <strong key={index} className="evidence-mark">{segment.text}</strong> : segment.text,
                 )}
               </blockquote>
-              <div className="sample-note">
-                <div className="sample-score"><span>82</span><span className="eyebrow"> / 100</span></div>
-                <div>
-                  <p className="eyebrow">Why it matters</p>
-                  <p className="mt-1 text-sm leading-relaxed text-text-secondary">{sample.explanation}</p>
-                </div>
-              </div>
             </div>
-            <figcaption className="sample-caption text-sm text-text-muted">Matched words · {formatMatchedTerms(sample.matchedTerms)}</figcaption>
-          </figure>
+            <div className="sample-evidence">
+              <Badge tone={sample.risk} className="capitalize">{sample.risk} risk</Badge>
+              <h3>Why it was flagged</h3>
+              <p className="reading text-text-secondary">{sample.explanation}</p>
+            </div>
+          </div>
         </section>
 
         <section id="how-it-works" className="frame editorial-section">
-          <h2 className="section-title">From upload to review</h2>
+          <h2 className="section-title">From upload to decision</h2>
           <ol className="step-list">
             {steps.map(([title, description], index) => (
               <li key={title}>
@@ -84,10 +103,7 @@ export default function Landing() {
 
         <section className="frame editorial-section last-editorial">
           <h2 className="section-title">Before you rely on a finding</h2>
-          <div className="margin-note space-y-3">
-            <p className="reading text-text-secondary">Use findings to decide what to read first. Ask a qualified legal reviewer to check the agreement and any suggested changes.</p>
-            <p className="reading text-text-secondary">Scans need OCR before upload. Completed clause explanations require the configured AI service. Chat can show a limited local search result if the service is unavailable. References depend on the source corpus your operator has configured.</p>
-          </div>
+          <p className="reading text-text-secondary">Use findings to decide what to read first. Ask a qualified legal reviewer to check the agreement and any suggested changes.</p>
         </section>
       </main>
       <SiteFooter />

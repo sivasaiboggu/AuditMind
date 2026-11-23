@@ -10,7 +10,7 @@ import { initializeQueue, enqueueContractJob, setProgressListener } from './serv
 import { streamChatWithGemini } from './services/gemini.js';
 import { installContractAuth, ownedContract, verifiedUserId } from './security.js';
 import { sortClausesByNumber } from './services/clauseOrder.js';
-import { Contract, Clause } from '@auditmind/shared-types';
+import type { Contract, Clause, ClauseReview, ReviewOutcome } from '@auditmind/shared-types';
 
 export interface AppDependencies {
   store?: SupabaseClient | null;
@@ -53,6 +53,17 @@ const paginationSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   offset: z.coerce.number().int().min(0).max(100000).default(0),
 });
+
+const reviewOutcome = z.enum(['accepted', 'revise', 'escalate'] as const satisfies readonly ReviewOutcome[]);
+const reviewSchema = z.union([
+  z.strictObject({ outcome: z.null() }),
+  z.strictObject({ outcome: reviewOutcome, note: z.string().trim().max(1000).default('') })
+    .refine(({ outcome, note }) => outcome === 'accepted' || note.length > 0),
+]);
+
+function mapReview(row: { outcome: ReviewOutcome; note: string; updated_at: string }): ClauseReview {
+  return { outcome: row.outcome, note: row.note, updatedAt: row.updated_at };
+}
 
 function parsePagination(req: { query: unknown }): { limit: number; offset: number } | null {
   const parsed = paginationSchema.safeParse(req.query ?? {});
@@ -101,6 +112,7 @@ await (deps.initialize || initializeQueue)();
 // Register plugins
 await app.register(cors, {
   origin: resolveCorsOrigins(),
+  methods: ['GET', 'HEAD', 'POST', 'PUT', 'DELETE'],
   credentials: true
 });
 await app.register(multipart, { limits: { fileSize: 15 * 1024 * 1024 } });
@@ -255,7 +267,7 @@ app.get('/contracts', async (req, reply) => {
 
   const { data, error } = await supabase
     .from('contracts')
-    .select('*')
+    .select('*, clauses(count), clause_review_decisions(count)')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .range(pagination.offset, pagination.offset + pagination.limit - 1);
@@ -272,7 +284,10 @@ app.get('/contracts', async (req, reply) => {
     nextRetryAt: item.next_retry_at || null,
     overallRiskScore: boundedScore(item.overall_risk_score),
     createdAt: item.created_at,
-    updatedAt: item.updated_at
+    updatedAt: item.updated_at,
+    ...(item.status === 'completed' && item.clauses?.[0] && item.clause_review_decisions?.[0]
+      ? { reviewProgress: { total: item.clauses[0].count, decided: item.clause_review_decisions[0].count } }
+      : {}),
   }));
 });
 
@@ -333,34 +348,70 @@ app.get('/contracts/:id/clauses', async (req, reply) => {
   // and only then take the requested page.
   const { data, error } = await supabase
     .from('clauses')
-    .select('*')
-    .eq('contract_id', id);
+    .select('*, clause_review_decisions(outcome,note,updated_at)')
+    .eq('contract_id', id)
+    .order('created_at').order('id');
 
   if (error) return reply.status(500).send({ error: 'The database request could not be completed.' });
   const ordered = sortClausesByNumber(data ?? []);
-  return ordered.slice(pagination.offset, pagination.offset + pagination.limit).map(c => ({
-    id: c.id,
-    contractId: c.contract_id,
-    number: c.number,
-    title: c.title,
-    text: c.text,
-    riskLevel: c.risk_level,
-    // The pipeline stores a per-clause score and averages it into the
-    // contract's overall score, but this endpoint used to drop it — the
-    // review UI could only show the tier, never the number behind it.
-    // Omit it when nothing valid was stored rather than inventing a 0.
-    ...(typeof c.risk_score === 'number' && Number.isFinite(c.risk_score)
-      ? { riskScore: c.risk_score }
-      : {}),
-    // The exact words that earned the tier, stored with the clause. Omit
-    // when nothing was stored rather than inventing evidence.
-    ...(Array.isArray(c.matched_terms) && c.matched_terms.length > 0 &&
-       c.matched_terms.every((t: unknown) => typeof t === 'string' && t !== '')
-      ? { matchedTerms: c.matched_terms }
-      : {}),
-    riskExplanation: c.risk_explanation,
-    suggestedRedline: c.suggested_redline
-  }));
+  return ordered.slice(pagination.offset, pagination.offset + pagination.limit).map(c => {
+    const review = Array.isArray(c.clause_review_decisions) ? c.clause_review_decisions[0] : c.clause_review_decisions;
+    return {
+      id: c.id,
+      contractId: c.contract_id,
+      number: c.number,
+      title: c.title,
+      text: c.text,
+      riskLevel: c.risk_level,
+      // The pipeline stores a per-clause score and averages it into the
+      // contract's overall score, but this endpoint used to drop it — the
+      // review UI could only show the tier, never the number behind it.
+      // Omit it when nothing valid was stored rather than inventing a 0.
+      ...(typeof c.risk_score === 'number' && Number.isFinite(c.risk_score)
+        ? { riskScore: c.risk_score }
+        : {}),
+      // The exact words that earned the tier, stored with the clause. Omit
+      // when nothing was stored rather than inventing evidence.
+      ...(Array.isArray(c.matched_terms) && c.matched_terms.length > 0 &&
+         c.matched_terms.every((t: unknown) => typeof t === 'string' && t !== '')
+        ? { matchedTerms: c.matched_terms }
+        : {}),
+      riskExplanation: c.risk_explanation,
+      suggestedRedline: c.suggested_redline,
+      ...(review ? { review: mapReview(review) } : {}),
+    };
+  });
+});
+
+app.put('/contracts/:id/review/:clauseId', async (req, reply) => {
+  if (!supabase) return reply.code(500).send({ error: 'Database unavailable.' });
+  const { id, clauseId } = req.params as { id: string; clauseId: string };
+  const contract = await ownedContract(supabase, id, req.authenticatedUserId);
+  if (!contract) return reply.code(404).send({ error: 'Contract not found.' });
+  if (contract.status !== 'completed') return reply.code(409).send({ error: 'Wait for analysis to finish before recording decisions.' });
+
+  const decision = reviewSchema.safeParse(req.body);
+  if (!z.string().uuid().safeParse(clauseId).success || !decision.success) {
+    return reply.code(400).send({ error: 'Choose a valid decision. A note of up to 1,000 characters is required for revisions and escalations.' });
+  }
+  const { data: clause, error: lookupError } = await supabase.from('clauses').select('id')
+    .eq('contract_id', id).eq('id', clauseId).maybeSingle();
+  if (lookupError) return reply.code(500).send({ error: 'Could not check the clause.' });
+  if (!clause) return reply.code(404).send({ error: 'Clause not found.' });
+
+  const decisions = supabase.from('clause_review_decisions');
+  if (decision.data.outcome === null) {
+    const { error } = await decisions.delete().eq('contract_id', id).eq('clause_id', clauseId);
+    if (error) return reply.code(500).send({ error: 'Could not reopen this clause.' });
+    return { review: null };
+  }
+  const { data, error } = await decisions.upsert({
+    contract_id: id, clause_id: clauseId, outcome: decision.data.outcome,
+    note: decision.data.note, updated_at: new Date().toISOString(),
+  }, { onConflict: 'clause_id' }).select('outcome,note,updated_at').single();
+  if (error?.code === '23503') return reply.code(404).send({ error: 'Clause not found.' });
+  if (error || !data) return reply.code(500).send({ error: 'Could not save the decision.' });
+  return { review: mapReview(data) };
 });
 
 /**

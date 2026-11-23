@@ -23,5 +23,5 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src"],
-  "exclude": ["src/lib/report.test.ts", "src/lib/dashboard.test.ts", "src/lib/copy-guard.test.ts", "src/lib/evidence.test.ts"]
+  "exclude": ["src/**/*.test.ts"]
 }

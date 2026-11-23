@@ -9,7 +9,7 @@ export default {
   theme: {
     extend: {
       colors: {
-        background: { base: color('bg-base'), panel: color('bg-panel'), hover: color('bg-hover') },
+        background: { base: color('bg-base'), panel: color('bg-panel'), hover: color('bg-hover'), desk: color('bg-desk') },
         rule: color('rule'),
         control: color('control'),
         overlay: color('overlay'),

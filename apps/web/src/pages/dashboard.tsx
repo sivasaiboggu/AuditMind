@@ -1,6 +1,7 @@
 import { jobStatusNotice } from '../lib/job-status';
 import { buildTrendData, countByRiskBucket, countHighRiskCompleted, matchesRiskFilter, riskBucket } from '../lib/dashboard';
 import { workspaceGuard } from '../lib/workspace-guard';
+import { reviewQueueState } from '../lib/review';
 import { authenticatedFetch } from '../lib/api';
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -8,6 +9,7 @@ import { useContractStore } from '../store/contractStore';
 import { useAuth } from '../lib/auth-context';
 import { useToast } from '../hooks/useToast';
 import { Navbar } from '../components/Navbar';
+import { ReviewProgress } from '../components/ReviewProgress';
 import { ToastViewport } from '../components/ToastViewport';
 import { Badge, Button, EmptyState, Skeleton, Spinner } from '../components/ui';
 import { supabase } from '../lib/supabase';
@@ -24,6 +26,8 @@ type SortBy = 'date-desc' | 'date-asc' | 'risk-desc' | 'risk-asc' | 'name-asc';
 const statuses = [['all', 'All statuses'], ['completed', 'Analyzed'], ['processing', 'Analyzing'], ['failed', 'Failed'], ['queued', 'Queued']] as const;
 const riskLevels = ['Critical', 'High', 'Medium', 'Low'] as const;
 const sortOptions = [['date-desc', 'Newest first'], ['date-asc', 'Oldest first'], ['risk-desc', 'Highest risk'], ['risk-asc', 'Lowest risk'], ['name-asc', 'Name A–Z']] as const;
+const queues = [['all', 'All contracts'], ['to-review', 'To review'], ['reviewed', 'Decisions recorded'], ['analysis', 'Analysis status']] as const;
+type Queue = typeof queues[number][0];
 const riskColors = { critical: 'text-risk-critical', high: 'text-risk-high', medium: 'text-risk-medium', low: 'text-risk-low' } as const;
 const dateFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 export default function Dashboard() {
@@ -44,6 +48,7 @@ export default function Dashboard() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [riskFilter, setRiskFilter] = useState<RiskFilter>('all');
   const [sortBy, setSortBy] = useState<SortBy>('date-desc');
+  const [queue, setQueue] = useState<Queue>('all');
 
   // Inline delete confirmation (replaces window.confirm()).
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
@@ -114,11 +119,16 @@ export default function Dashboard() {
   const trendData = useMemo(() => buildTrendData(contracts), [contracts]);
 
   const riskCounts = useMemo(() => countByRiskBucket(contracts), [contracts]);
+  const queueCounts = contracts.reduce((counts, contract) => {
+    counts[reviewQueueState(contract)] += 1;
+    return counts;
+  }, { 'to-review': 0, reviewed: 0, analysis: 0 });
   // Client-side search / filter / sort (kept below the stats block so the
   // workspace-client test harness can evaluate the fetch effect in isolation).
   const filteredContracts = useMemo(() => {
     const q = query.trim().toLowerCase();
     const filtered = contracts.filter((c) => {
+      if (queue !== 'all' && reviewQueueState(c) !== queue) return false;
       if (q && !c.name.toLowerCase().includes(q)) return false;
       if (statusFilter !== 'all') {
         if (statusFilter === 'queued') {
@@ -140,7 +150,7 @@ export default function Dashboard() {
       case 'date-desc':
       default: return [...filtered].sort((a, b) => byDate(b, a));
     }
-  }, [contracts, query, statusFilter, riskFilter, sortBy]);
+  }, [contracts, queue, query, statusFilter, riskFilter, sortBy]);
 
   const filtersActive = query.trim() !== '' || statusFilter !== 'all' || riskFilter !== 'all' || sortBy !== 'date-desc';
 
@@ -149,6 +159,11 @@ export default function Dashboard() {
     setStatusFilter('all');
     setRiskFilter('all');
     setSortBy('date-desc');
+  };
+
+  const changeQueue = (next: Queue) => {
+    clearFilters();
+    setQueue(next);
   };
 
   const getStatusBadge = (status: string) => {
@@ -213,12 +228,12 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen">
       <Navbar onLogout={handleLogout} />
-      <main id="main-content" tabIndex={-1} className="frame wide-frame page-stack">
-        <header className="workspace-title">
+      <main id="main-content" tabIndex={-1} className="frame wide-frame page-stack desk-home">
+        <header className="workspace-title desk-masthead">
           <div>
             <p className="eyebrow mb-3">Review desk</p>
             <h1 className="page-title">Contracts</h1>
-            <p className="lede mt-3">Check the status of an upload or open a contract to review its clauses.</p>
+            <p className="lede mt-3">Open a contract to read its clauses and record what needs to happen next.</p>
           </div>
           <Link to="/upload" className="action action-primary"><Plus size={18} aria-hidden="true" /> Upload contract</Link>
         </header>
@@ -252,6 +267,16 @@ export default function Dashboard() {
               </div>
               <Button variant="ghost" size="sm" onClick={handleRefresh} aria-label="Refresh contracts"><RefreshCw size={16} aria-hidden="true" /> Refresh</Button>
             </div>
+
+            {hasLoaded && contracts.length > 0 && (
+              <div className="queue-switch" role="group" aria-label="Review queue">
+                {queues.map(([value, label]) => (
+                  <button key={value} type="button" aria-pressed={queue === value} onClick={() => changeQueue(value)}>
+                    {label} <span aria-hidden="true">{value === 'all' ? contracts.length : queueCounts[value]}</span>
+                  </button>
+                ))}
+              </div>
+            )}
 
             {hasLoaded && contracts.length > 0 && (
               <div className="ledger-filters">
@@ -297,9 +322,9 @@ export default function Dashboard() {
             ) : filteredContracts.length === 0 ? (
               <EmptyState icon={<Search size={20} />} title="No matching contracts"
                 description="Change the search or clear the filters."
-                action={<Button variant="outline" onClick={clearFilters}>Clear filters</Button>} />
+                  action={<Button variant="outline" onClick={() => filtersActive ? clearFilters() : changeQueue('all')}>{filtersActive ? 'Clear filters' : 'Show all contracts'}</Button>} />
             ) : (
-              <ul className="ledger-rows" aria-label="Contracts">
+              <ul key={queue} className="ledger-rows" aria-label="Contracts">
                 {filteredContracts.map((contract) => {
                   const completed = contract.status === 'completed';
                   const deleting = confirmingDeleteId === contract.id;
@@ -327,6 +352,7 @@ export default function Dashboard() {
                       <div className="ledger-status">
                         {getStatusBadge(contract.status)}
                         {completed && <span className={`tnum text-sm font-semibold capitalize ${riskColors[risk]}`}>{contract.overallRiskScore} / 100 · {risk}</span>}
+                        {contract.reviewProgress && <ReviewProgress {...contract.reviewProgress} />}
                       </div>
                       {deleting ? (
                         <div className="ledger-delete flex flex-wrap items-center gap-2" role="group" aria-label={`Confirm deletion of ${contract.name}`}>
@@ -359,7 +385,7 @@ export default function Dashboard() {
                     return (
                       <div className="distribution-row" key={label}>
                         <dt className="text-sm font-medium">{label}</dt>
-                        <dd className="risk-bar" aria-hidden="true"><span style={{ width: `${100 * count / Math.max(completedContracts.length, 1)}%`, background: `var(--risk-${key})` }} /></dd>
+                        <dd className="risk-bar" aria-hidden="true"><span style={{ transform: `scaleX(${count / Math.max(completedContracts.length, 1)})`, background: `var(--risk-${key})` }} /></dd>
                         <dd className="font-mono text-xs tnum">{count}</dd>
                       </div>
                     );

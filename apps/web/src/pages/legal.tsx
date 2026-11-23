@@ -3,8 +3,8 @@ import { SiteFooter, SiteHeader } from '../components/SiteHeader';
 
 const privacySections = [
   ['Account and workspace', 'Configured installations use Supabase for authentication, file storage and workspace records. Your sign-in email identifies your account. This browser stores your session and theme preference.'],
-  ['Files and analysis', 'AuditMind processes your uploaded file and saves the extracted clauses and findings with the contract. When Gemini is configured, relevant clause text and questions are sent to that service to produce explanations or answers.'],
-  ['Removing data', 'Use Delete in the contract list to remove a contract and its analysis from the workspace. For account access, retention and any backups, contact the operator of the installation you use.'],
+  ['Files and analysis', 'AuditMind processes your uploaded file and saves extracted clauses, findings and any review decisions and notes with the contract. When Gemini is configured, relevant clause text and questions are sent to that service to produce explanations or answers.'],
+  ['Removing data', 'Use Delete in the contract list to remove a contract, its analysis and your saved decisions from the workspace. For account access, retention and any backups, contact the operator of the installation you use.'],
 ];
 
 const termsSections = [

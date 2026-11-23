@@ -2,17 +2,20 @@ import { authenticatedFetch, sendAuthenticated } from '../lib/api';
 import { buildReportMarkdown, countByRisk, reportFileName } from '../lib/report';
 import { splitByMatchedTerms, formatMatchedTerms } from '../lib/evidence';
 import { workspaceGuard } from '../lib/workspace-guard';
+import { findReviewClause, nextUndecided, readClausePages, reviewLabels } from '../lib/review';
 import { chatHistory, interruptChat, INCOMPLETE_ANSWER } from '../lib/chat-stream';
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useContractStore } from '../store/contractStore';
 import { useAuth } from '../lib/auth-context';
 import { useKeyboard } from '../hooks/useKeyboard';
 import { Navbar } from '../components/Navbar';
+import { ReviewDecision } from '../components/ReviewDecision';
+import { ReviewProgress } from '../components/ReviewProgress';
 import { Badge, Button, EmptyState, Skeleton } from '../components/ui';
 import { copyToClipboard } from '../lib/utils';
-import { ArrowLeft, ArrowRight, Send, FileText, Copy, Check, Download, Search, GitCompare, MessageSquare } from 'lucide-react';
-import type { Clause, ChatMessage, RiskLevel } from '@auditmind/shared-types';
+import { ArrowLeft, ArrowRight, BookOpen, Send, FileText, Copy, Check, Download, Search, GitCompare, MessageSquare } from 'lucide-react';
+import type { Clause, ClauseReview, ChatMessage, ReviewOutcome, RiskLevel } from '@auditmind/shared-types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3000/ws';
@@ -30,9 +33,9 @@ function SourceText({ clause }: { clause: Clause }) {
   const terms = clause.matchedTerms ?? [];
   return (
     <>
-      <blockquote className="margin-note reading text-text-secondary">
+      <blockquote className="margin-note reading whitespace-pre-wrap text-text-secondary">
         {splitByMatchedTerms(clause.text, terms).map((segment, index) => segment.matched
-          ? <strong key={index} className="font-semibold text-text-primary underline decoration-accent-brand decoration-2 underline-offset-4">{segment.text}</strong>
+          ? <strong key={index} className="evidence-mark">{segment.text}</strong>
           : segment.text)}
       </blockquote>
       {terms.length > 0 && <p className="mt-3 text-sm text-text-muted">Matched words · <span className="text-text-primary">{formatMatchedTerms(terms)}</span></p>}
@@ -42,6 +45,7 @@ function SourceText({ clause }: { clause: Clause }) {
 
 export default function ContractView() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const {
@@ -57,8 +61,12 @@ export default function ContractView() {
   const [clausesLoading, setClausesLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const clauseIndex = useRef<HTMLElement>(null);
-  const [selectedClause, setSelectedClause] = useState<Clause | null>(null);
-  const [activeTab, setActiveTab] = useState<'analysis' | 'chat' | 'compare'>('analysis');
+  const reviewPane = useRef<HTMLElement>(null);
+  const [activeTab, setActiveTab] = useState<'analysis' | 'document' | 'chat' | 'compare'>('analysis');
+  const [reviewFilter, setReviewFilter] = useState(false);
+  const pendingSave = useRef<(() => boolean) | null>(null);
+  const [saveBusy, setSaveBusy] = useState(false);
+  const reviewScope = useRef<() => boolean>(() => false);
   const [chatInput, setChatInput] = useState('');
   const [isChatGenerating, setIsChatGenerating] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
@@ -78,17 +86,38 @@ export default function ContractView() {
   const [exported, setExported] = useState(false);
   const exportedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const selectedClause = findReviewClause(activeClauses, searchParams.get('clause'));
+  const selectedIndex = activeClauses.findIndex((clause) => clause.id === selectedClause?.id);
+  const nextReview = nextUndecided(activeClauses, selectedClause?.id);
+  const decisionsRecorded = activeClauses.filter((clause) => clause.review).length;
+
+  function selectClause(clause: Clause) {
+    setSearchParams((params) => {
+      const next = new URLSearchParams(params);
+      next.set('clause', clause.id);
+      return next;
+    }, { replace: true, preventScrollReset: true });
+  }
+
+  function openFinding(clause: Clause, focus = true) {
+    selectClause(clause);
+    setCompareMode(false);
+    setActiveTab('analysis');
+    if (focus) reviewPane.current?.focus();
+  }
+
   const filteredClauses = useMemo(() => {
     const query = clauseQuery.trim().toLowerCase();
     return activeClauses.filter((clause) => {
       if (riskFilter !== 'all' && clause.riskLevel !== riskFilter) return false;
+      if (reviewFilter && clause.review) return false;
       if (!query) return true;
       return [clause.number, clause.title, clause.text]
         .join(' ')
         .toLowerCase()
         .includes(query);
     });
-  }, [activeClauses, clauseQuery, riskFilter]);
+  }, [activeClauses, clauseQuery, riskFilter, reviewFilter]);
 
   const compareClauses = useMemo(
     () => compareIds
@@ -143,7 +172,7 @@ export default function ContractView() {
     const index = filteredClauses.findIndex((clause) => clause.id === target.getAttribute('data-clause'));
     const next = Math.max(0, Math.min(index + offset, filteredClauses.length - 1));
     const nextClause = filteredClauses[next];
-    if (!compareMode) setSelectedClause(nextClause);
+    if (!compareMode) openFinding(nextClause, false);
     clauseIndex.current.querySelectorAll<HTMLButtonElement>('button[data-clause]')[next]?.focus();
   }
 
@@ -193,16 +222,17 @@ export default function ContractView() {
     let disposed = false;
     const ownerCurrent = workspaceGuard();
     const currentOwner = () => !disposed && ownerCurrent();
-    setSelectedClause(null);
+    reviewScope.current = currentOwner;
+    setSaveBusy(false);
     setClausesLoading(true);
     setLoadError(null);
     setChatInput('');
     setIsChatGenerating(false);
-    setWsConnected(false);
     setCopiedId(null);
     setActiveTab('analysis');
     setClauseQuery('');
     setRiskFilter('all');
+    setReviewFilter(false);
     setCompareMode(false);
     setCompareIds([]);
     const current = useContractStore.getState().contracts.find(c => c.id === id);
@@ -210,7 +240,8 @@ export default function ContractView() {
     setActiveClauses([]);
     const load = async () => {
       try {
-        if (!current) {
+        let contract = current;
+        if (current?.status !== 'completed') {
           const response = await authenticatedFetch(`${API_URL}/contracts`);
           if (!currentOwner()) return;
           if (!response.ok) throw new Error('Contract list unavailable.');
@@ -220,19 +251,21 @@ export default function ContractView() {
           if (!found) { navigate('/dashboard'); return; }
           setContracts(data);
           setActiveContract(found);
+          contract = found;
         }
-        const response = await authenticatedFetch(`${API_URL}/contracts/${id}/clauses`);
-        if (!currentOwner()) return;
-        if (!response.ok) throw new Error('Contract clauses unavailable.');
-        const clauses = await response.json();
+        if (contract?.status !== 'completed') { setClausesLoading(false); return; }
+        const clauses = await readClausePages(async (offset, limit) => {
+          if (!currentOwner()) throw new Error('The review changed.');
+          const response = await authenticatedFetch(`${API_URL}/contracts/${id}/clauses?offset=${offset}&limit=${limit}`);
+          if (!response.ok) throw new Error('Contract clauses unavailable.');
+          return response.json();
+        });
         if (!currentOwner()) return;
         setActiveClauses(clauses);
-        setSelectedClause(clauses[0] || null);
         setClausesLoading(false);
       } catch {
         if (currentOwner()) {
           setActiveClauses([]);
-          setSelectedClause(null);
           setClausesLoading(false);
           setLoadError('Contract details could not be loaded. Return to the dashboard or reload to try again.');
         }
@@ -241,6 +274,27 @@ export default function ContractView() {
     void load();
     return () => { disposed = true; };
   }, [id, user?.id, navigate, setActiveContract, setActiveClauses, setContracts]);
+
+  async function saveDecision(clauseId: string, decision: { outcome: ReviewOutcome; note: string } | { outcome: null }) {
+    const current = reviewScope.current;
+    if (!id || !current() || pendingSave.current === current) throw new Error('The review is not ready.');
+    pendingSave.current = current;
+    setSaveBusy(true);
+    try {
+      const response = await authenticatedFetch(`${API_URL}/contracts/${id}/review/${clauseId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(decision),
+      });
+      if (!response.ok) throw new Error('Decision update failed.');
+      const { review }: { review: ClauseReview | null } = await response.json();
+      if (current()) {
+        const { activeClauses: latest } = useContractStore.getState();
+        setActiveClauses(latest.map((clause) => clause.id === clauseId ? { ...clause, review: review ?? undefined } : clause));
+      }
+    } finally {
+      if (pendingSave.current === current) pendingSave.current = null;
+      if (current()) setSaveBusy(false);
+    }
+  }
 
   // 2. Configure WebSocket connection for real-time document chat
   useEffect(() => {
@@ -374,10 +428,14 @@ export default function ContractView() {
             </Link>
             <h1 className="page-title break-words">{activeContract?.name || 'Contract review'}</h1>
             {activeClauses.length > 0 && (
-              <ul className="mt-4 flex flex-wrap gap-x-4 gap-y-1" aria-label="Clause counts by risk level">
-                <li className="text-sm text-text-secondary">{activeClauses.length} clauses</li>
-                {riskLevels.map((level) => <li key={level}><Badge tone={level} className="capitalize">{riskCounts[level]} {level}</Badge></li>)}
-              </ul>
+              <div className="review-title-meta">
+                <ReviewProgress decided={decisionsRecorded} total={activeClauses.length} />
+                <ul className="flex flex-wrap gap-2" aria-label="Clause counts by risk level">
+                  {riskLevels.filter((level) => riskCounts[level] > 0).map((level) => (
+                    <li key={level}><Badge tone={level} className="capitalize">{riskCounts[level]} {level}</Badge></li>
+                  ))}
+                </ul>
+              </div>
             )}
           </div>
           <Button variant="outline" onClick={handleExportReport} disabled={!activeContract || !activeClauses.length}
@@ -390,7 +448,7 @@ export default function ContractView() {
         <div className="review-layout sheet">
           <section ref={clauseIndex} className="clause-index" aria-labelledby="index-title">
             <div className="ledger-header">
-              <h2 id="index-title" className="text-xl font-semibold tracking-tight">Clauses</h2>
+              <h2 id="index-title" className="text-xl font-semibold tracking-tight">Clause index</h2>
               <p className="eyebrow tnum" role="status">{filteredClauses.length} of {activeClauses.length}</p>
             </div>
             <div className="grid gap-3 border-b border-rule p-4">
@@ -410,6 +468,7 @@ export default function ContractView() {
                   <GitCompare size={16} aria-hidden="true" /> Compare{compareMode ? ` (${compareIds.length}/2)` : ''}
                 </Button>
               </div>
+              <label className="review-check"><input type="checkbox" checked={reviewFilter} onChange={(event) => setReviewFilter(event.target.checked)} /> Undecided only</label>
               {compareMode && (
                 <p className="text-sm text-text-secondary" role="status">
                   {compareIds.length === 2 ? 'Two clauses selected.' : 'Select two clauses to compare.'}
@@ -430,8 +489,8 @@ export default function ContractView() {
                 <EmptyState title={activeContract?.status === 'processing' ? 'Analysis in progress' : 'No clauses available'}
                   description={activeContract?.status === 'processing' ? 'Check the contract list for updates.' : activeContract?.status === 'failed' ? 'This analysis failed. Open the contract list for details.' : 'This contract has no clause results.'} />
               ) : filteredClauses.length === 0 ? (
-                <EmptyState title="No matching clauses" description="Change the search or risk filter."
-                  action={<Button variant="outline" onClick={() => { setClauseQuery(''); setRiskFilter('all'); }}>Clear filters</Button>} />
+                <EmptyState title="No matching clauses" description="Change the search or clear the filters."
+                  action={<Button variant="outline" onClick={() => { setClauseQuery(''); setRiskFilter('all'); setReviewFilter(false); }}>Clear filters</Button>} />
               ) : (
                 <ul>
                   {filteredClauses.map((clause) => {
@@ -439,7 +498,7 @@ export default function ContractView() {
                     return (
                       <li key={clause.id}>
                         <button type="button" data-clause={clause.id} aria-pressed={pressed}
-                          className="clause-row" onClick={() => compareMode ? toggleCompare(clause) : setSelectedClause(clause)}>
+                          className="clause-row" onClick={() => compareMode ? toggleCompare(clause) : openFinding(clause, false)}>
                           <span className="eyebrow">
                             <span className="sr-only">{compareMode ? (pressed ? 'Remove from comparison: ' : 'Add to comparison: ') : 'Select clause: '}</span>
                             {clause.number || 'Clause'}
@@ -447,6 +506,7 @@ export default function ContractView() {
                           <Badge tone={clause.riskLevel} className="justify-self-end capitalize">{clause.riskLevel}</Badge>
                           <span className="clause-row-name">{compareMode && pressed && <Check size={14} aria-hidden="true" />}{clause.title}</span>
                           {typeof clause.riskScore === 'number' && <span className="justify-self-end font-mono text-xs text-text-muted tnum">{clause.riskScore}</span>}
+                          {clause.review && <span className="clause-outcome"><Check size={12} aria-hidden="true" /> {reviewLabels[clause.review.outcome]}</span>}
                         </button>
                       </li>
                     );
@@ -459,20 +519,21 @@ export default function ContractView() {
               <span className="mx-2" aria-hidden="true">·</span><kbd className="kbd">/</kbd> search
               <span className="mx-2" aria-hidden="true">·</span><kbd className="kbd">Esc</kbd> clear search
             </p>
-            {(selectedClause || compareClauses.length === 2) && <a href="#clause-reading" className="review-jump text-link text-sm">Go to {tab === 'compare' ? 'comparison' : 'clause detail'} <ArrowRight size={15} aria-hidden="true" /></a>}
+            {(selectedClause || compareClauses.length === 2) && <a href="#clause-reading" className="review-jump text-link text-sm">Go to {tab === 'compare' ? 'comparison' : tab === 'document' ? 'document' : 'clause detail'} <ArrowRight size={15} aria-hidden="true" /></a>}
           </section>
 
-          <section className="review-pane" id="clause-reading" tabIndex={-1} aria-label="Clause review">
+          <section ref={reviewPane} className="review-pane" id="clause-reading" tabIndex={-1} aria-label="Clause review">
             {selectedClause || compareClauses.length === 2 ? (
               <>
                 <div className="review-tabs" role="group" aria-label="Review view">
-                  {selectedClause && <button type="button" aria-pressed={tab === 'analysis'} onClick={() => setActiveTab('analysis')}><FileText size={16} aria-hidden="true" /> Analysis</button>}
+                  {selectedClause && <button type="button" aria-pressed={tab === 'analysis'} onClick={() => setActiveTab('analysis')}><FileText size={16} aria-hidden="true" /> Finding</button>}
+                  {selectedClause && <button type="button" aria-pressed={tab === 'document'} onClick={() => setActiveTab('document')}><BookOpen size={16} aria-hidden="true" /> Document</button>}
                   {selectedClause && <button type="button" aria-pressed={tab === 'chat'} onClick={() => setActiveTab('chat')}><MessageSquare size={16} aria-hidden="true" /> Chat{chatMessages.length > 0 && <span className="font-mono text-xs text-text-muted">{chatMessages.length}</span>}</button>}
                   {compareClauses.length === 2 && <button type="button" aria-pressed={tab === 'compare'} onClick={() => setActiveTab('compare')}><GitCompare size={16} aria-hidden="true" /> Comparison</button>}
                 </div>
 
                 {tab === 'analysis' && selectedClause && (
-                  <article className="review-content">
+                  <article key={selectedClause.id} className="review-content finding-content animate-fade-in">
                     <header className="review-reading-title">
                       <div className="min-w-0">
                         <p className="eyebrow">{selectedClause.number || 'Clause'}</p>
@@ -483,37 +544,77 @@ export default function ContractView() {
                         {typeof selectedClause.riskScore === 'number' && <p className="text-sm text-text-secondary tnum"><strong className="text-xl text-text-primary">{selectedClause.riskScore}</strong> / 100</p>}
                       </div>
                     </header>
-                    <section className="review-reading-section source-section">
-                      <h3>Original clause</h3>
-                      <SourceText clause={selectedClause} />
-                    </section>
-                    <section className="review-reading-section">
-                      <h3>Why it was flagged</h3>
-                      <p className="reading text-text-secondary">{selectedClause.riskExplanation || 'No explanation is available for this finding.'}</p>
-                    </section>
-                    {selectedClause.suggestedRedline && (
-                      <section className="review-reading-section">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <h3>Suggested revision</h3>
-                          <Button variant="outline" size="sm" onClick={() => void handleCopy(`redline-${selectedClause.id}`, selectedClause.suggestedRedline!)} aria-label="Copy suggested revision">
-                            {copiedId === `redline-${selectedClause.id}` ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />}
-                            <span aria-live="polite">{copiedId === `redline-${selectedClause.id}` ? 'Copied' : 'Copy'}</span>
-                          </Button>
-                        </div>
-                        <p className="reading text-text-secondary">{selectedClause.suggestedRedline}</p>
-                      </section>
-                    )}
-                    <section className="review-reading-section">
-                      <h3>Next step</h3>
-                      <p className="reading text-text-secondary">{nextSteps[selectedClause.riskLevel]}</p>
-                      <p className="text-sm text-text-muted">General guidance. Have a legal reviewer check the agreement.</p>
-                    </section>
-                    <Button variant="outline" onClick={() => setActiveTab('chat')}><MessageSquare size={16} aria-hidden="true" /> Ask about this clause</Button>
+                    <div className="finding-layout">
+                      <div className="finding-paper">
+                        <section className="review-reading-section source-section">
+                          <h3>Original clause</h3>
+                          <SourceText clause={selectedClause} />
+                        </section>
+                        {selectedClause.suggestedRedline && (
+                          <section className="review-reading-section">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <h3>Suggested revision</h3>
+                              <Button variant="outline" size="sm" onClick={() => void handleCopy(`redline-${selectedClause.id}`, selectedClause.suggestedRedline!)} aria-label="Copy suggested revision">
+                                {copiedId === `redline-${selectedClause.id}` ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />}
+                                <span aria-live="polite">{copiedId === `redline-${selectedClause.id}` ? 'Copied' : 'Copy'}</span>
+                              </Button>
+                            </div>
+                            <p className="reading whitespace-pre-wrap text-text-secondary">{selectedClause.suggestedRedline}</p>
+                          </section>
+                        )}
+                        <Button variant="outline" onClick={() => {
+                          setChatInput(`What should I check in ${selectedClause.number || selectedClause.title}?`);
+                          setActiveTab('chat');
+                        }}><MessageSquare size={16} aria-hidden="true" /> Ask about this clause</Button>
+                      </div>
+                      <aside className="finding-evidence" aria-label="Evidence and decision">
+                        <section className="review-reading-section finding-explanation">
+                          <h3>Why it was flagged</h3>
+                          <p className="reading text-text-secondary">{selectedClause.riskExplanation || 'No explanation is available for this finding.'}</p>
+                          <details>
+                            <summary className="text-sm font-semibold">What to check</summary>
+                            <p className="reading mt-2 text-text-secondary">{nextSteps[selectedClause.riskLevel]}</p>
+                          </details>
+                        </section>
+                        <ReviewDecision review={selectedClause.review} busy={saveBusy} save={(decision) => saveDecision(selectedClause.id, decision)} />
+                      </aside>
+                    </div>
+                    <nav className="finding-navigation" aria-label="Move between clauses">
+                      <Button variant="ghost" size="sm" disabled={selectedIndex === 0} onClick={() => openFinding(activeClauses[selectedIndex - 1])}><ArrowLeft size={16} aria-hidden="true" /> Previous clause</Button>
+                      <Button variant="ghost" size="sm" disabled={selectedIndex === activeClauses.length - 1} onClick={() => openFinding(activeClauses[selectedIndex + 1])}>Next clause <ArrowRight size={16} aria-hidden="true" /></Button>
+                      {nextReview && <Button variant="outline" size="sm" onClick={() => {
+                        setClauseQuery('');
+                        setRiskFilter('all');
+                        openFinding(nextReview);
+                      }}>Next undecided <ArrowRight size={16} aria-hidden="true" /></Button>}
+                    </nav>
                   </article>
                 )}
 
+                {tab === 'document' && selectedClause && (
+                  <section className="review-content document-content animate-fade-in" aria-labelledby="document-title">
+                    <header className="review-reading-title">
+                      <div>
+                        <h2 id="document-title" className="section-title">Read the document</h2>
+                        <p className="reading mt-2 text-text-secondary">Extracted clauses in section order. Open any finding to review its evidence and record a decision.</p>
+                      </div>
+                      <a className="action action-outline" href={`#document-${selectedClause.id}`}>Jump to selected clause</a>
+                    </header>
+                    <ol className="document-sections">
+                      {activeClauses.map((clause) => (
+                        <li key={clause.id} id={`document-${clause.id}`} tabIndex={-1} data-selected={clause.id === selectedClause.id}>
+                          <p className="eyebrow">{clause.number || 'Clause'}</p>
+                          <h3 className="text-xl font-semibold">{clause.title}</h3>
+                          <p className="reading whitespace-pre-wrap">{clause.text}</p>
+                          <Button size="sm" variant="outline" aria-label={`Open finding for ${clause.number || 'clause'} ${clause.title}`} onClick={() => openFinding(clause)}>Open finding <ArrowRight size={15} aria-hidden="true" /></Button>
+                        </li>
+                      ))}
+                    </ol>
+                  </section>
+                )}
+
                 {tab === 'compare' && compareClauses.length === 2 && (
-                  <div className="review-content">
+                  <div className="review-content animate-fade-in">
                     <header className="review-reading-title">
                       <div>
                         <h2 className="section-title">Compare clauses</h2>
@@ -540,7 +641,7 @@ export default function ContractView() {
                 )}
 
                 {tab === 'chat' && selectedClause && (
-                  <div className="review-content">
+                  <div className="review-content animate-fade-in">
                     <header className="review-reading-title">
                       <div>
                         <h2 className="section-title">Ask the contract</h2>
