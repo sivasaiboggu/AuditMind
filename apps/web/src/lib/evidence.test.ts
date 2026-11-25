@@ -33,6 +33,37 @@ describe('evidence highlighting', () => {
     );
   });
 
+  it('treats a word after "non " as the negation, not the term, however it is cased', () => {
+    assert.deepEqual(
+      splitByMatchedTerms('this information is non confidential', ['confidential']),
+      [{ text: 'this information is non confidential', matched: false }],
+    );
+    assert.deepEqual(
+      splitByMatchedTerms('this information is Non Confidential', ['confidential']),
+      [{ text: 'this information is Non Confidential', matched: false }],
+    );
+    // The same word outside the negation still highlights.
+    assert.deepEqual(
+      splitByMatchedTerms('strictly confidential', ['confidential']),
+      [{ text: 'strictly ', matched: false }, { text: 'confidential', matched: true }],
+    );
+  });
+
+  it('treats regex metacharacters in a term as literal characters', () => {
+    // A dot in a term must not act as a wildcard.
+    assert.deepEqual(
+      splitByMatchedTerms('shall indemnify the other party', ['indemni.y']),
+      [{ text: 'shall indemnify the other party', matched: false }],
+    );
+  });
+
+  it('trims and deduplicates terms before matching', () => {
+    assert.deepEqual(
+      splitByMatchedTerms('shall indemnify fully', [' indemnify ', 'indemnify']),
+      [{ text: 'shall ', matched: false }, { text: 'indemnify', matched: true }, { text: ' fully', matched: false }],
+    );
+  });
+
   it('prefers the longer phrase over either word alone', () => {
     assert.deepEqual(
       splitByMatchedTerms('liquidated damages apply', ['damages', 'liquidated damages']),
